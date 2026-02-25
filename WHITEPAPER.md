@@ -8,7 +8,27 @@
 
 ---
 
-## 1. Motivation and Problem Statement
+## Table of Contents
+
+1. [Executive Overview](#1-executive-overview)
+2. [Problem Statement](#2-problem-statement)
+3. [Design Goals and Non-Goals](#3-design-goals-and-non-goals)
+4. [Threat Model and Trust Boundaries](#4-threat-model-and-trust-boundaries)
+5. [Pipeline Architecture](#5-pipeline-architecture)
+6. [Evidence Model and Auditability](#6-evidence-model-and-auditability)
+7. [Offline Verification Bundles](#7-offline-verification-bundles)
+8. [Policy Engine Rationale](#8-policy-engine-rationale)
+9. [Mapping to NIST 800-53 Rev 5 and NIST 800-161](#9-mapping-to-nist-800-53-rev-5-and-nist-800-161)
+10. [Limitations and Assumptions](#10-limitations-and-assumptions)
+11. [Operational Guidance](#11-operational-guidance)
+12. [Future Work](#12-future-work)
+13. [Appendix A: Example JSON Report Structure](#appendix-a-example-json-report-structure)
+14. [Appendix B: Example Policy YAML Snippet](#appendix-b-example-policy-yaml-snippet)
+15. [Appendix C: Example Evidence Item](#appendix-c-example-evidence-item)
+
+---
+
+## 1. Executive Overview
 
 Software artifacts—compiled binaries, container images, release archives—travel through an increasingly complex supply chain before reaching production systems. Each handoff point represents an opportunity for adversarial insertion:
 
