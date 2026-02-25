@@ -1,0 +1,83 @@
+[package]
+name = "veriscan"
+version = "0.1.0"
+edition = "2021"
+description = "Defense-grade deterministic software artifact verification for secure and air-gapped environments"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+keywords = ["security", "verification", "artifact", "supply-chain", "airgapped"]
+categories = ["command-line-utilities", "cryptography"]
+
+[lib]
+name = "veriscan_lib"
+path = "src/lib.rs"
+
+[[bin]]
+name = "veriscan"
+path = "src/main.rs"
+
+[dependencies]
+# CLI
+clap = { version = "4.5", features = ["derive"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+
+# Cryptographic hashing
+sha2 = "0.10"
+sha1 = "0.10"
+hex = "0.4"
+digest = "0.10"
+
+# HTTP client (online mode only)
+reqwest = { version = "0.12", features = ["json", "stream"] }
+futures-util = "0.3"
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Timestamps
+chrono = { version = "0.4", features = ["serde"] }
+
+# Structured logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt"] }
+
+# Correlation IDs
+uuid = { version = "1.10", features = ["v4", "serde"] }
+
+# Base64 decode for inspection heuristics
+base64 = "0.22"
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# PGP signature verification (OpenSSL backend for broad platform support)
+# OpenSSL is the most universally available crypto backend for sequoia.
+# Requires: libssl-dev (Debian/Ubuntu) or openssl-devel (RHEL) at build time.
+sequoia-openpgp = { version = "1", default-features = false, features = ["crypto-openssl"] }
+
+# Directory traversal for bundle operations
+walkdir = "2.5"
+
+# Regex for indicator detection
+regex = "1.11"
+
+# Temporary files for testing and bundle ops
+tempfile = "3.12"
+
+[dev-dependencies]
+tempfile = "3.12"
+tokio = { version = "1", features = ["full"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+
+[profile.test]
+opt-level = 1

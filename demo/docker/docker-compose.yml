@@ -1,0 +1,42 @@
+version: "3.9"
+
+services:
+  veriscan-demo:
+    build:
+      context: ../..
+      dockerfile: demo/docker/Dockerfile
+    image: veriscan-demo:latest
+    container_name: veriscan-demo
+    environment:
+      # Optional: Set your VirusTotal API key for reputation checks.
+      # Leave unset to skip VT lookups in demo.
+      VT_API_KEY: "${VT_API_KEY:-}"
+      RUST_LOG: "info"
+    volumes:
+      # Mount output directory so reports are accessible on the host.
+      - ./../../demo/out:/demo/out
+      # Optional: mount custom policy files.
+      # - ./../../policies:/policies
+    stdin_open: true
+    tty: true
+    # Entrypoint runs the full demo by default.
+    # Override to run specific demo scenarios:
+    #   docker-compose run veriscan-demo /demo/scripts/run_online_demo.sh
+    #   docker-compose run veriscan-demo /demo/scripts/run_offline_demo.sh
+    #   docker-compose run veriscan-demo /demo/scripts/validate_ci_gate.sh
+
+  # Separate service for offline-only demo (no network).
+  veriscan-offline:
+    build:
+      context: ../..
+      dockerfile: demo/docker/Dockerfile
+    image: veriscan-demo:latest
+    container_name: veriscan-offline
+    network_mode: "none"
+    environment:
+      RUST_LOG: "info"
+    volumes:
+      - ./../../demo/out:/demo/out
+    command: ["/demo/scripts/run_offline_demo.sh"]
+    profiles:
+      - offline

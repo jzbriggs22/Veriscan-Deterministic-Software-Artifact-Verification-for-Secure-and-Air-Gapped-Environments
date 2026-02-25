@@ -1,0 +1,87 @@
+# Veriscan Default Policy
+# ========================
+# Balanced policy suitable for general artifact verification.
+# Signature is checked but not required; malware scan is required if available;
+# reputation is checked but absence is non-fatal.
+
+name: "default"
+version: "1.0"
+
+# Signature
+require_signature: false
+allow_unsigned: true
+
+# Network
+allow_network: true
+
+# Checksums
+require_checksums: false
+
+# SBOM (Phase II — not yet enforced)
+require_sbom: false
+
+# Reputation
+reputation_required: false
+reputation_failure_is_fatal: false
+
+# Malware
+malware_scan_required: false
+malware_failure_is_fatal: false
+
+# File type controls
+deny_file_types: []
+
+# Signer allowlist (empty = any signer accepted)
+allow_signers: []
+
+# Entropy threshold (8.0 = disabled)
+max_entropy_threshold: 7.5
+
+# URL denylist
+url_patterns_denylist: []
+
+# Executable handling
+executable_handling: "block_unsigned"
+
+# Network/subprocess timeouts
+network_timeout_seconds: 30
+subprocess_timeout_seconds: 120
+max_subprocess_output_bytes: 65536
+
+# String extraction bounds
+max_inspection_strings: 1000
+min_string_length: 6
+entropy_sample_bytes: 1048576
+
+# Reputation cache
+vt_api_key_env: "VT_API_KEY"
+reputation_cache_dir: "/tmp/veriscan_reputation_cache"
+reputation_cache_ttl_seconds: 86400
+
+# Decision matrix
+# Rules are evaluated in order; first match applies.
+decision_matrix:
+  - description: "Malware detected by scanner"
+    condition:
+      type: "malware_detected"
+    verdict: "failed"
+
+  - description: "Reputation: artifact flagged as malicious"
+    condition:
+      type: "reputation_malicious"
+    verdict: "failed"
+
+  - description: "Checksum mismatch"
+    condition:
+      type: "checksum_mismatch"
+    verdict: "failed"
+
+  - description: "Signer not in allowed list"
+    condition:
+      type: "signer_not_allowed"
+    verdict: "failed"
+
+  - description: "Signature is invalid"
+    condition:
+      type: "signature_invalid"
+    verdict: "failed"

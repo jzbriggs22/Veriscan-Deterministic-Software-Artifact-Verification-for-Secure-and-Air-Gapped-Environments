@@ -1,0 +1,97 @@
+# Veriscan Air-Gapped Policy
+# ===========================
+# Policy for completely offline/air-gapped environments.
+# Network access is prohibited. All checks rely on locally-available
+# evidence (checksum files, PGP signatures, local malware scanner).
+# Reputation checks are skipped by design.
+
+name: "airgapped"
+version: "1.0"
+
+# Signature: required in air-gapped environments (no network fallback)
+require_signature: true
+allow_unsigned: false
+
+# Network: DISABLED — policy enforcer
+allow_network: false
+
+# Checksums: required
+require_checksums: true
+
+# SBOM (Phase II hook)
+require_sbom: false
+
+# Reputation: not possible without network; not required
+reputation_required: false
+reputation_failure_is_fatal: false
+
+# Malware: required if scanner available; fatal if unavailable
+malware_scan_required: true
+malware_failure_is_fatal: true  # Air-gapped means we control the environment
+
+# File type controls
+deny_file_types: []
+
+# Signer allowlist: should be populated with known-good offline keys
+allow_signers: []
+
+# Entropy threshold
+max_entropy_threshold: 7.0
+
+# URL denylist: irrelevant in air-gapped mode, but kept for config consistency
+url_patterns_denylist: []
+
+# Executable handling
+executable_handling: "block_unsigned"
+
+# Timeouts
+network_timeout_seconds: 0  # Network calls will not happen
+subprocess_timeout_seconds: 300  # Longer timeout for offline scanner
+max_subprocess_output_bytes: 65536
+
+# String extraction
+max_inspection_strings: 2000
+min_string_length: 6
+entropy_sample_bytes: 1048576
+
+# Reputation cache (unused in offline mode)
+vt_api_key_env: "VT_API_KEY"
+reputation_cache_dir: "/tmp/veriscan_reputation_cache"
+reputation_cache_ttl_seconds: 0
+
+# Decision matrix
+decision_matrix:
+  - description: "Malware detected"
+    condition:
+      type: "malware_detected"
+    verdict: "failed"
+
+  - description: "Checksum mismatch"
+    condition:
+      type: "checksum_mismatch"
+    verdict: "failed"
+
+  - description: "Signer not in allowlist"
+    condition:
+      type: "signer_not_allowed"
+    verdict: "failed"
+
+  - description: "Signature invalid"
+    condition:
+      type: "signature_invalid"
+    verdict: "failed"
+
+  - description: "Signature missing (required)"
+    condition:
+      type: "signature_missing"
+    verdict: "failed"
+
+  - description: "File type denied"
+    condition:
+      type: "denied_file_type"
+    verdict: "failed"
+
+  - description: "High entropy: may be packed or encrypted"
+    condition:
+      type: "high_entropy"
+    verdict: "unverified"
