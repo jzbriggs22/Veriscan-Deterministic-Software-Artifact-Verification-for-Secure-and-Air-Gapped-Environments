@@ -43,14 +43,13 @@ gate_check() {
     echo "── ${description}"
     echo "   Artifact: $(basename "${artifact}")"
 
+    local exitcode
     "${VERISCAN}" verify \
         --policy "${POLICIES_DIR}/ci_gate.yaml" \
         --report-json "${OUT_DIR}/${report_base}.json" \
         --report-md  "${OUT_DIR}/${report_base}.md" \
         "${extra_args[@]}" \
-        "${artifact}" || true
-
-    local exitcode=$?
+        "${artifact}" && exitcode=0 || exitcode=$?
     echo -n "   Exit code: ${exitcode} → "
 
     case "${exitcode}" in
