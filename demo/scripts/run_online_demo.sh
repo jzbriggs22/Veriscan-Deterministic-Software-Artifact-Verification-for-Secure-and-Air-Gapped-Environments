@@ -73,9 +73,7 @@ EXPECTED_SHA256_TAMPERED=$(cat "${FIXTURES_DIR}/good/demo_artifact.tar.gz.sha256
     --trusted-keys "${FIXTURES_DIR}/tampered/trusted_keys" \
     --report-json "${OUT_DIR}/scenario2_tampered.json" \
     --report-md  "${OUT_DIR}/scenario2_tampered.md" \
-    "${TAMPERED}" || true
-
-EXITCODE=$?
+    "${TAMPERED}" && EXITCODE=0 || EXITCODE=$?
 echo ""
 echo "Exit code: ${EXITCODE}"
 [ "${EXITCODE}" -eq 20 ] && echo "✅ PASS: Expected FAILED (exit 20)" \
@@ -91,9 +89,7 @@ UNSIGNED="${FIXTURES_DIR}/unsigned/demo_artifact.tar.gz"
     --policy "${POLICIES_DIR}/contractor_strict.yaml" \
     --report-json "${OUT_DIR}/scenario3_unsigned.json" \
     --report-md  "${OUT_DIR}/scenario3_unsigned.md" \
-    "${UNSIGNED}" || true
-
-EXITCODE=$?
+    "${UNSIGNED}" && EXITCODE=0 || EXITCODE=$?
 echo ""
 echo "Exit code: ${EXITCODE}"
 ( [ "${EXITCODE}" -eq 20 ] || [ "${EXITCODE}" -eq 10 ] ) \
@@ -110,9 +106,7 @@ MALWARE="${FIXTURES_DIR}/malware_sim/eicar.com.txt"
     --policy "${POLICIES_DIR}/default.yaml" \
     --report-json "${OUT_DIR}/scenario4_malware.json" \
     --report-md  "${OUT_DIR}/scenario4_malware.md" \
-    "${MALWARE}" || true
-
-EXITCODE=$?
+    "${MALWARE}" && EXITCODE=0 || EXITCODE=$?
 echo ""
 echo "Exit code: ${EXITCODE}"
 # ClamAV may not be installed; accept UNVERIFIED (10) or FAILED (20).

@@ -46,9 +46,7 @@ separator "Offline Scenario 1: VERIFIED — Valid offline bundle"
     --offline "${BUNDLE_DIR}" \
     --report-json "${OUT_DIR}/offline_scenario1_verified.json" \
     --report-md  "${OUT_DIR}/offline_scenario1_verified.md" \
-    /dev/null || true   # Source arg unused in offline mode
-
-EXITCODE=$?
+    /dev/null && EXITCODE=0 || EXITCODE=$?   # Source arg unused in offline mode
 echo "Exit code: ${EXITCODE}"
 ( [ "${EXITCODE}" -eq 0 ] || [ "${EXITCODE}" -eq 10 ] ) \
     && echo "✅ PASS: Offline bundle verified" \
@@ -71,9 +69,7 @@ echo "TAMPERED" >> "${TAMPERED_BUNDLE}/demo_artifact.tar.gz"
     --offline "${TAMPERED_BUNDLE}" \
     --report-json "${OUT_DIR}/offline_scenario2_tampered.json" \
     --report-md  "${OUT_DIR}/offline_scenario2_tampered.md" \
-    /dev/null || true
-
-EXITCODE=$?
+    /dev/null && EXITCODE=0 || EXITCODE=$?
 echo "Exit code: ${EXITCODE}"
 [ "${EXITCODE}" -eq 20 ] \
     && echo "✅ PASS: Tampered artifact detected (exit 20)" \
@@ -95,9 +91,7 @@ echo '{"injected": "tampered entry"}' >> "${TAMPERED_MANIFEST_BUNDLE}/bundle.man
     --offline "${TAMPERED_MANIFEST_BUNDLE}" \
     --report-json "${OUT_DIR}/offline_scenario3_tampered_manifest.json" \
     --report-md  "${OUT_DIR}/offline_scenario3_tampered_manifest.md" \
-    /dev/null || true
-
-EXITCODE=$?
+    /dev/null && EXITCODE=0 || EXITCODE=$?
 echo "Exit code: ${EXITCODE}"
 [ "${EXITCODE}" -eq 20 ] \
     && echo "✅ PASS: Tampered manifest detected (exit 20)" \
@@ -117,9 +111,7 @@ rm -f "${NO_SIG_BUNDLE}/bundle.manifest.sig"
     --offline "${NO_SIG_BUNDLE}" \
     --report-json "${OUT_DIR}/offline_scenario4_no_sig.json" \
     --report-md  "${OUT_DIR}/offline_scenario4_no_sig.md" \
-    /dev/null || true
-
-EXITCODE=$?
+    /dev/null && EXITCODE=0 || EXITCODE=$?
 echo "Exit code: ${EXITCODE}"
 [ "${EXITCODE}" -eq 20 ] \
     && echo "✅ PASS: Missing signature detected (exit 20)" \
