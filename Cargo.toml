@@ -55,10 +55,13 @@ base64 = "0.22"
 thiserror = "1.0"
 anyhow = "1.0"
 
-# PGP signature verification (OpenSSL backend for broad platform support)
-# OpenSSL is the most universally available crypto backend for sequoia.
-# Requires: libssl-dev (Debian/Ubuntu) or openssl-devel (RHEL) at build time.
-sequoia-openpgp = { version = "1", default-features = false, features = ["crypto-openssl"] }
+# PGP signature verification — pure-Rust backend (no native library dependencies).
+# allow-experimental-crypto: required opt-in for the RustCrypto backend.
+# allow-variable-time-crypto: RustCrypto does not provide constant-time operations;
+#   acceptable here because Veriscan runs in non-interactive batch mode (verifying
+#   artifact signatures, never generating them), so timing side-channels against a
+#   live user are not a concern.  See: https://crates.io/crates/sequoia-openpgp#crypto-backends
+sequoia-openpgp = { version = "1", default-features = false, features = ["crypto-rust", "allow-experimental-crypto", "allow-variable-time-crypto"] }
 
 # Directory traversal for bundle operations
 walkdir = "2.5"
