@@ -130,7 +130,31 @@ pub async fn run(
     // Perform verification.
     match verify_detached(&artifact_bytes, &sig_bytes, &certs) {
         Ok((fingerprint, uid)) => {
-            // Fingerprint pinning check.
+            // Enforce signer pinning.
+            // When require_signature is true, allow_signers must be non-empty.
+            // An empty list means the policy has not been configured with trusted
+            // fingerprints; fail closed rather than allowing any signer through.
+            if policy.require_signature && policy.allow_signers.is_empty() {
+                warn!(
+                    fingerprint = %fingerprint,
+                    "Signature valid but allow_signers is empty; \
+                     signer pinning required when require_signature=true"
+                );
+                return Ok(SignatureStageResult {
+                    result: SignatureResult::SignerNotAllowed {
+                        fingerprint: fingerprint.clone(),
+                    },
+                    evidence: vec![build_evidence(
+                        "signer_not_allowed",
+                        &sig_path.display().to_string(),
+                        &fingerprint,
+                        "Policy requires signer pinning (require_signature=true) but \
+                         allow_signers is empty; populate allow_signers with trusted \
+                         key fingerprints before deployment",
+                    )],
+                });
+            }
+
             if !policy.allow_signers.is_empty() {
                 let fp_clean = fingerprint.replace(' ', "").to_lowercase();
                 let allowed = policy

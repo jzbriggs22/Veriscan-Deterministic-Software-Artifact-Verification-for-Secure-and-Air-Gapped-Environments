@@ -32,7 +32,13 @@ malware_failure_is_fatal: true  # Air-gapped means we control the environment
 # File type controls
 deny_file_types: []
 
-# Signer allowlist: should be populated with known-good offline keys
+# Signer allowlist: MUST be populated with trusted signer fingerprints before
+# deployment.  Because require_signature is true, an empty allow_signers list
+# causes veriscan to reject all signers (fail-closed).  Add one or more
+# 40-character hex fingerprints corresponding to your approved offline signing
+# keys, e.g.:
+#   allow_signers:
+#     - "AABBCCDDEEFF00112233445566778899AABBCCDD"
 allow_signers: []
 
 # Entropy threshold
