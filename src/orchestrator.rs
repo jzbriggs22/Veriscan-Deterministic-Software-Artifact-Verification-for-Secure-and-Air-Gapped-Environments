@@ -34,7 +34,7 @@ pub async fn run_pipeline(source: &str, config: &RunConfig) -> Result<JsonReport
 
     let mut all_evidence: Vec<EvidenceItem> = Vec::new();
     let mut pipeline_results = PipelineResults::default();
-    let mut warnings: Vec<String> = Vec::new();
+    let warnings: Vec<String> = Vec::new();
 
     // ── Stage 1: Acquire ────────────────────────────────────────────────────
     let acquire_result = match acquire::run(source, policy).await {
@@ -170,8 +170,6 @@ pub async fn run_bundle_pipeline(
     use crate::stages::bundle;
 
     let run_id = Uuid::new_v4().to_string();
-    let start_time = Utc::now();
-    let policy = &config.policy;
 
     info!(
         run_id = %run_id,

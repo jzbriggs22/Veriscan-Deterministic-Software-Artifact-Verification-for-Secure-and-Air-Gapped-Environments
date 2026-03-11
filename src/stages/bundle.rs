@@ -24,8 +24,6 @@ use crate::util::fs::sha256_file;
 use serde::{Deserialize, Serialize};
 use sequoia_openpgp::parse::Parse;
 use sha2::{Digest, Sha256, Sha512};
-use std::collections::HashMap;
-use std::io::Read;
 use std::path::{Path, PathBuf};
 use tracing::{info, warn};
 use walkdir::WalkDir;
@@ -384,7 +382,6 @@ fn sign_artifact_with_sequoia(
     sig_path: &Path,
 ) -> Result<(), VeriError> {
     use sequoia_openpgp::{
-        cert::prelude::*,
         parse::Parse,
         policy::StandardPolicy,
         serialize::stream::{Message, Signer},
@@ -463,7 +460,7 @@ fn verify_sig_with_certs(
 ) -> Result<(), VeriError> {
     use sequoia_openpgp::{
         parse::stream::{
-            DetachedVerifierBuilder, GoodChecksum, MessageLayer, MessageStructure, VerificationHelper,
+            DetachedVerifierBuilder, MessageLayer, MessageStructure, VerificationHelper,
         },
         policy::StandardPolicy,
         KeyHandle,

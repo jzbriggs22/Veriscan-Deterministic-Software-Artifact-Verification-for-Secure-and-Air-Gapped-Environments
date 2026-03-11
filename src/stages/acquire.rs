@@ -8,9 +8,8 @@ use crate::error::VeriError;
 use crate::evidence::EvidenceItem;
 use crate::util::fs::{file_size, filename_str, sha256_file};
 use crate::util::net::{build_client, check_url_allowed};
-use crate::util::time::iso8601_now;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use tracing::{info, warn};
 
 /// Result of the acquire stage.

@@ -27,8 +27,6 @@ pub async fn download_bytes(
     url: &str,
     max_bytes: usize,
 ) -> Result<Vec<u8>, VeriError> {
-    use tokio::io::AsyncReadExt;
-
     let response = client
         .get(url)
         .send()
