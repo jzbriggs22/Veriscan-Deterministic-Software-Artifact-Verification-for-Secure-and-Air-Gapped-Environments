@@ -27,7 +27,7 @@ use sha2::{Digest, Sha256, Sha512};
 use std::collections::HashMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use tracing::info;
+use tracing::{info, warn};
 use walkdir::WalkDir;
 
 /// Bundle manifest structure.
@@ -103,7 +103,14 @@ pub async fn create(
             source: e,
         })?;
 
-    // Copy all public keys from keys_dir to trusted_keys/.
+    // Copy public keys from keys_dir to trusted_keys/.
+    // Scan each candidate file for private-key markers before copying;
+    // skip (and warn) any file that contains secret-key material.
+    const PRIVATE_KEY_MARKERS: &[&str] = &[
+        "-----BEGIN PGP PRIVATE KEY BLOCK-----",
+        "-----BEGIN PGP SECRET KEY BLOCK-----",
+        "PRIVATE KEY",
+    ];
     for entry in WalkDir::new(keys_dir)
         .max_depth(1)
         .into_iter()
@@ -113,6 +120,22 @@ pub async fn create(
         if p.is_file() {
             let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("");
             if matches!(ext, "asc" | "pub" | "pgp" | "gpg") {
+                // Read and inspect for private-key markers before copying.
+                let content = std::fs::read(p).map_err(|e| VeriError::Io {
+                    path: p.display().to_string(),
+                    source: e,
+                })?;
+                // Interpret as lossy UTF-8 for marker scanning (binary keys
+                // will not contain these ASCII markers).
+                let text = String::from_utf8_lossy(&content);
+                if PRIVATE_KEY_MARKERS.iter().any(|m| text.contains(m)) {
+                    warn!(
+                        key_path = %p.display(),
+                        "Skipping file containing private-key material; \
+                         only public keys should be in the keys directory"
+                    );
+                    continue;
+                }
                 let dest = out_dir
                     .join("trusted_keys")
                     .join(p.file_name().unwrap());
