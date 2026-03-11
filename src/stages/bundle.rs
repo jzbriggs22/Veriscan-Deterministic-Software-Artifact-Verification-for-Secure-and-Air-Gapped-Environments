@@ -287,8 +287,9 @@ pub async fn verify(bundle_dir: &Path) -> Result<PathBuf, VeriError> {
     }
     info!("All bundle file hashes verified");
 
-    // Return the artifact path.
-    let artifact_path = bundle_dir.join(&manifest.artifact_filename);
+    // Return the artifact path — apply the same canonical containment check
+    // so artifact_filename cannot escape bundle_dir via relative segments or symlinks.
+    let artifact_path = safe_bundle_path(&bundle_dir, &manifest.artifact_filename)?;
     if !artifact_path.exists() {
         return Err(VeriError::BundleFileMissing {
             file: manifest.artifact_filename.clone(),
@@ -298,16 +299,47 @@ pub async fn verify(bundle_dir: &Path) -> Result<PathBuf, VeriError> {
     Ok(artifact_path)
 }
 
-/// Reject any path component that would escape the bundle directory.
+/// Reject any path that escapes the bundle directory.
+///
+/// Uses filesystem canonicalization so that symlinks and relative segments
+/// (`./x/../y`) cannot bypass the check.  The file at `relative` must exist
+/// (bundle verification only calls this for files already present in the
+/// bundle directory).
 fn safe_bundle_path(base: &Path, relative: &str) -> Result<PathBuf, VeriError> {
-    // Reject absolute paths or ../ traversal.
+    // Fast lexical pre-check — catches the common cases early.
     if relative.starts_with('/') || relative.contains("..") {
         return Err(VeriError::PathTraversal {
             path: relative.to_string(),
         });
     }
-    let joined = base.join(relative);
-    Ok(joined)
+
+    // Canonical base: must exist or we cannot safely confine.
+    let base_abs = base.canonicalize().map_err(|e| VeriError::Io {
+        path: base.display().to_string(),
+        source: e,
+    })?;
+
+    let joined = base_abs.join(relative);
+
+    // Canonicalize the joined path (resolves symlinks, normalizes segments).
+    // The file is expected to exist at this point; if it does not the caller
+    // will detect and report BundleFileMissing immediately after.
+    let resolved = if joined.exists() {
+        joined.canonicalize().map_err(|e| VeriError::Io {
+            path: joined.display().to_string(),
+            source: e,
+        })?
+    } else {
+        joined.clone()
+    };
+
+    if !resolved.starts_with(&base_abs) {
+        return Err(VeriError::PathTraversal {
+            path: relative.to_string(),
+        });
+    }
+
+    Ok(resolved)
 }
 
 fn load_bundle_keys(

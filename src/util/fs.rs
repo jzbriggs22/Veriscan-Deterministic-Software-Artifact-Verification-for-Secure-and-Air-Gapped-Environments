@@ -28,25 +28,46 @@ pub fn safe_path(path: &Path, base: Option<&Path>) -> Result<PathBuf, VeriError>
     }
 
     if let Some(base) = base {
-        let base_abs = base
-            .canonicalize()
-            .map_err(|e| VeriError::Io {
-                path: base.display().to_string(),
-                source: e,
-            })
-            .unwrap_or_else(|_| base.to_path_buf());
+        // Require base to canonicalize — a non-existent base is an error, not a
+        // fallback, because falling back to the raw path would defeat the check.
+        let base_abs = base.canonicalize().map_err(|e| VeriError::Io {
+            path: base.display().to_string(),
+            source: e,
+        })?;
 
         let joined = base_abs.join(&normalised);
 
-        // Attempt to canonicalize the joined path; if the file doesn't exist yet,
-        // check the prefix manually.
+        // Canonicalize the joined path.  When the target does not yet exist,
+        // walk up to the nearest existing ancestor, canonicalize that, then
+        // re-append the remaining (non-existent) components so that symlinks
+        // in the existing portion are still resolved.
         let resolved = if joined.exists() {
             joined.canonicalize().map_err(|e| VeriError::Io {
                 path: joined.display().to_string(),
                 source: e,
             })?
         } else {
-            joined.clone()
+            let mut candidate = joined.clone();
+            let mut suffix: Vec<std::ffi::OsString> = Vec::new();
+            loop {
+                if candidate.exists() {
+                    break;
+                }
+                match candidate.file_name() {
+                    Some(name) => suffix.push(name.to_os_string()),
+                    None => break,
+                }
+                match candidate.parent() {
+                    Some(p) => candidate = p.to_path_buf(),
+                    None => break,
+                }
+            }
+            let canon_ancestor = candidate.canonicalize().map_err(|e| VeriError::Io {
+                path: candidate.display().to_string(),
+                source: e,
+            })?;
+            suffix.reverse();
+            suffix.iter().fold(canon_ancestor, |acc, c| acc.join(c))
         };
 
         if !resolved.starts_with(&base_abs) {
