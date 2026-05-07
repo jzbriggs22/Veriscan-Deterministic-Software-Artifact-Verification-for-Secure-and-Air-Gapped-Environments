@@ -35,30 +35,34 @@ deny_file_types: []
 # Leave empty to skip fingerprint pinning (still requires valid signature).
 allow_signers: []
 
-# Entropy threshold: flag highly packed/encrypted artifacts
+# Entropy threshold (bits/byte, 0.0–8.0).
+# 7.0 flags most packed/encrypted binaries; tighter than default to match
+# the higher assurance requirement of defense contractor environments.
 max_entropy_threshold: 7.0
 
-# URL denylist: add known-bad domains/patterns
+# URL denylist: "http://" blocks all plain-text HTTP downloads.
+# Add additional patterns (domains, paths) as threat intelligence warrants.
 url_patterns_denylist:
   - "http://"  # Require HTTPS for all downloads
 
-# Executable handling: unsigned executables are blocked
+# Unsigned executables are blocked; only PGP-verified binaries may proceed.
 executable_handling: "block_unsigned"
 
-# Timeouts
+# Standard CI/CD-compatible timeouts.
 network_timeout_seconds: 30
 subprocess_timeout_seconds: 120
-max_subprocess_output_bytes: 65536
+# 64 KiB cap prevents OOM from attacker-controlled scanner output.
+max_subprocess_output_bytes: 65536  # 64 KiB
 
-# String extraction
+# Broader string extraction for higher-assurance inspection.
 max_inspection_strings: 2000
 min_string_length: 6
-entropy_sample_bytes: 1048576
+entropy_sample_bytes: 1048576  # 1 MiB
 
-# Reputation cache
+# Reputation cache — shorter TTL for more frequent VT freshness checks.
 vt_api_key_env: "VT_API_KEY"
 reputation_cache_dir: "/var/cache/veriscan/reputation"
-reputation_cache_ttl_seconds: 3600  # 1 hour (more frequent refresh)
+reputation_cache_ttl_seconds: 3600  # 1 hour; adjust to VT API rate limits
 
 # Decision matrix
 decision_matrix:

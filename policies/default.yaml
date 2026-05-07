@@ -34,29 +34,44 @@ deny_file_types: []
 # Signer allowlist (empty = any signer accepted)
 allow_signers: []
 
-# Entropy threshold (8.0 = disabled)
+# Entropy threshold for Shannon entropy (bits/byte, range 0.0–8.0).
+#   8.0 = disabled (never flag)
+#   7.5 = flag artifacts that are likely compressed, packed, or encrypted
+#   7.0 = more aggressive; catches most packed binaries
+# Typical values: plaintext ~3–5, compiled code ~5–6, compressed/encrypted ~7.5–8.0
 max_entropy_threshold: 7.5
 
-# URL denylist
+# URL denylist: substring patterns; any URL containing a pattern is blocked.
 url_patterns_denylist: []
 
-# Executable handling
+# How to treat executable file types (ELF, PE, Mach-O):
+#   "allow"          — no restrictions
+#   "block_unsigned" — executables must have a valid PGP signature
+#   "deny_all"       — all executables are rejected
 executable_handling: "block_unsigned"
 
-# Network/subprocess timeouts
+# Hard wall-clock limit (seconds) for network requests (download, VT API).
 network_timeout_seconds: 30
+# Hard wall-clock limit (seconds) for subprocess invocations (e.g. clamscan).
 subprocess_timeout_seconds: 120
-max_subprocess_output_bytes: 65536
+# Maximum bytes captured from subprocess stdout/stderr (each).
+# Prevents OOM if a compromised scanner emits unbounded output.
+max_subprocess_output_bytes: 65536  # 64 KiB
 
-# String extraction bounds
+# Maximum number of printable strings extracted from the artifact.
 max_inspection_strings: 1000
+# Minimum run length (bytes) for a sequence to qualify as a string.
 min_string_length: 6
-entropy_sample_bytes: 1048576
+# Bytes read from the artifact head for entropy computation.
+# Larger values are more accurate but slower for huge files.
+entropy_sample_bytes: 1048576  # 1 MiB
 
-# Reputation cache
+# Environment variable that holds the VirusTotal v3 API key.
 vt_api_key_env: "VT_API_KEY"
+# Directory for caching VT hash-lookup results (never uploads files).
 reputation_cache_dir: "/tmp/veriscan_reputation_cache"
-reputation_cache_ttl_seconds: 86400
+# How long a cached VT result is considered fresh (seconds).
+reputation_cache_ttl_seconds: 86400  # 24 hours
 
 # Decision matrix
 # Rules are evaluated in order; first match applies.

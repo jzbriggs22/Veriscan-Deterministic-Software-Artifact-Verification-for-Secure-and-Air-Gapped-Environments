@@ -41,26 +41,31 @@ deny_file_types: []
 #     - "AABBCCDDEEFF00112233445566778899AABBCCDD"
 allow_signers: []
 
-# Entropy threshold
+# Entropy threshold (bits/byte, 0.0–8.0).
+# 7.0 is more aggressive than the default 7.5 — appropriate for air-gapped
+# environments where packed/obfuscated binaries are a higher risk indicator.
 max_entropy_threshold: 7.0
 
-# URL denylist: irrelevant in air-gapped mode, but kept for config consistency
+# URL denylist: irrelevant in air-gapped mode, but kept for config consistency.
 url_patterns_denylist: []
 
-# Executable handling
+# Unsigned executables are blocked; require_signature provides the enforcement.
 executable_handling: "block_unsigned"
 
-# Timeouts
-network_timeout_seconds: 0  # Network calls will not happen
-subprocess_timeout_seconds: 300  # Longer timeout for offline scanner
-max_subprocess_output_bytes: 65536
+# Network calls will not happen; timeout is 0 to make misconfiguration obvious.
+network_timeout_seconds: 0
+# Longer timeout for offline scanner — local ClamAV may be slower on cold cache.
+subprocess_timeout_seconds: 300
+# 64 KiB cap on subprocess output to prevent OOM from attacker-controlled output.
+max_subprocess_output_bytes: 65536  # 64 KiB
 
-# String extraction
+# Broader string extraction for deeper offline inspection.
 max_inspection_strings: 2000
 min_string_length: 6
-entropy_sample_bytes: 1048576
+# Sample the full first 1 MiB for entropy; accuracy matters more than speed offline.
+entropy_sample_bytes: 1048576  # 1 MiB
 
-# Reputation cache (unused in offline mode)
+# Reputation cache (unused in offline mode; TTL=0 means never cache).
 vt_api_key_env: "VT_API_KEY"
 reputation_cache_dir: "/tmp/veriscan_reputation_cache"
 reputation_cache_ttl_seconds: 0

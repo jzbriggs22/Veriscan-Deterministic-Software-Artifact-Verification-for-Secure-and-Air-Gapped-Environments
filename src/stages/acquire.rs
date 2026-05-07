@@ -13,6 +13,7 @@ use std::path::PathBuf;
 use tracing::{info, warn};
 
 /// Result of the acquire stage.
+#[derive(Debug)]
 pub struct AcquireResult {
     /// Path to the artifact on local disk (may be a temp file for URL sources).
     pub local_path: PathBuf,

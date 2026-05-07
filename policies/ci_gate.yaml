@@ -41,30 +41,34 @@ deny_file_types: []
 # Populate this with your CI signing key fingerprint for hardened pipelines.
 allow_signers: []
 
-# Entropy threshold: block highly compressed/packed artifacts in CI
+# Entropy threshold (bits/byte, 0.0–8.0).
+# 7.5 (same as default) — CI artifacts should not be highly obfuscated.
+# Lower this to 7.0 if your pipeline ingests compiled release binaries that
+# are not packed/compressed (stripped ELF/PE typically scores ~6.0–6.5).
 max_entropy_threshold: 7.5
 
-# URL denylist
+# URL denylist: block plain-text HTTP to enforce HTTPS-only artifact sources.
 url_patterns_denylist:
   - "http://"  # Require HTTPS
 
-# Executable handling: block unsigned executables
+# Unsigned executables are blocked at the CI gate.
 executable_handling: "block_unsigned"
 
-# Timeouts (shorter for CI responsiveness)
-network_timeout_seconds: 15
+# Shorter timeouts optimised for CI responsiveness.
+network_timeout_seconds: 15   # VT API typically responds in < 5s
 subprocess_timeout_seconds: 60
-max_subprocess_output_bytes: 32768
+# 32 KiB cap (lighter than default) — CI environments have tighter memory budgets.
+max_subprocess_output_bytes: 32768  # 32 KiB
 
-# String extraction (lighter for CI speed)
+# Lighter string extraction for faster CI runs.
 max_inspection_strings: 500
-min_string_length: 8
-entropy_sample_bytes: 524288
+min_string_length: 8            # Longer minimum reduces noise in CI logs
+entropy_sample_bytes: 524288    # 512 KiB — half the default; sufficient for headers
 
-# Reputation cache
+# Reputation cache — 1-hour TTL balances API quota with freshness in CI.
 vt_api_key_env: "VT_API_KEY"
 reputation_cache_dir: "/tmp/veriscan_ci_reputation_cache"
-reputation_cache_ttl_seconds: 3600
+reputation_cache_ttl_seconds: 3600  # 1 hour
 
 # Decision matrix
 decision_matrix:
