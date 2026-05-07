@@ -160,22 +160,17 @@ fn default_entropy_sample_bytes() -> usize {
 }
 
 /// How the tool treats executable file types.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecutableHandling {
     /// Allow executables regardless of signature state.
     Allow,
     /// Block unsigned executables (require_signature must also be true or
     /// this has no additional effect beyond require_signature).
+    #[default]
     BlockUnsigned,
     /// Deny all executables outright regardless of signature.
     DenyAll,
-}
-
-impl Default for ExecutableHandling {
-    fn default() -> Self {
-        ExecutableHandling::BlockUnsigned
-    }
 }
 
 /// A single rule in the policy decision matrix.

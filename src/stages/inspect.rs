@@ -257,7 +257,7 @@ fn extract_strings(data: &[u8], min_len: usize, max_count: usize) -> Vec<String>
         if results.len() >= max_count {
             break;
         }
-        if b >= 0x20 && b < 0x7f {
+        if (0x20..0x7f).contains(&b) {
             // Printable ASCII.
             current.push(b as char);
             if current.len() > 200 {

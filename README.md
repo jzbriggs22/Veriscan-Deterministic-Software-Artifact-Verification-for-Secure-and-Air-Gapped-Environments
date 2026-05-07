@@ -20,6 +20,54 @@ Designed for:
 
 ---
 
+## Installation
+
+veriscan uses a **pure-Rust crypto backend** (no OpenSSL, no system libssl required). A standard Rust toolchain is all you need.
+
+### Linux / WSL / macOS
+
+```bash
+# Install Rust if you don't have it
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source "$HOME/.cargo/env"
+
+git clone <repo-url> veriscan
+cd veriscan
+cargo build --release
+./target/release/veriscan --version
+```
+
+### Alpine Linux / Docker (air-gapped friendly)
+
+```bash
+# Alpine (e.g. Docker Desktop Alpine terminal)
+apk add --no-cache git cargo rust build-base
+
+git clone <repo-url> veriscan
+cd veriscan
+cargo build --release
+```
+
+Alternatively, use a pre-built Docker image or cross-compile from Linux:
+
+```bash
+docker run --rm -v "$PWD":/src -w /src rust:alpine \
+    sh -c "apk add --no-cache musl-dev && cargo build --release"
+```
+
+### Windows
+
+Use **WSL 2** (Ubuntu or Alpine) and follow the Linux instructions above, or run in **Docker Desktop** with an Alpine/Linux container. Native Windows builds are not tested.
+
+### Optional system tools
+
+| Tool | Purpose | Required? |
+|------|---------|-----------|
+| `clamscan` (ClamAV) | Malware scanning stage | No — stage skipped if absent |
+| Network access | VirusTotal reputation lookup | No — stage skipped in offline mode |
+
+---
+
 ## Quick Start
 
 ```bash

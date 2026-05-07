@@ -325,7 +325,7 @@ pub fn render_markdown(report: &JsonReport) -> String {
 
     // Artifact info.
     md.push_str("## Artifact\n\n");
-    md.push_str(&format!("| Field | Value |\n|---|---|\n"));
+    md.push_str("| Field | Value |\n|---|---|\n");
     md.push_str(&format!("| Source | `{}` |\n", report.artifact.source));
     md.push_str(&format!("| Filename | `{}` |\n", report.artifact.filename));
     md.push_str(&format!("| Size | {} bytes |\n", report.artifact.size_bytes));
@@ -333,7 +333,7 @@ pub fn render_markdown(report: &JsonReport) -> String {
         "| File Type | {} |\n",
         report.inspection.file_type
     ));
-    md.push_str("\n");
+    md.push('\n');
 
     // Hashes.
     md.push_str("## Cryptographic Hashes\n\n");
@@ -354,7 +354,7 @@ pub fn render_markdown(report: &JsonReport) -> String {
             .unwrap_or("Not checked");
         md.push_str(&format!("| SHA-512 | `{}...` | {} |\n", &sha512[..16], v));
     }
-    md.push_str("\n");
+    md.push('\n');
 
     // Signature.
     md.push_str("## PGP Signature\n\n");
@@ -390,7 +390,7 @@ pub fn render_markdown(report: &JsonReport) -> String {
         for d in &report.malware_scan.detections {
             md.push_str(&format!("- `{}`\n", d));
         }
-        md.push_str("\n");
+        md.push('\n');
     }
 
     // Reputation.
@@ -427,7 +427,7 @@ pub fn render_markdown(report: &JsonReport) -> String {
         for ind in report.inspection.indicators.iter().take(10) {
             md.push_str(&format!("- {}\n", ind));
         }
-        md.push_str("\n");
+        md.push('\n');
     }
 
     // Decision trace.
@@ -442,7 +442,7 @@ pub fn render_markdown(report: &JsonReport) -> String {
             verdict,
         ));
     }
-    md.push_str("\n");
+    md.push('\n');
 
     // Warnings.
     if !report.warnings.is_empty() {
@@ -450,7 +450,7 @@ pub fn render_markdown(report: &JsonReport) -> String {
         for w in &report.warnings {
             md.push_str(&format!("- {}\n", w));
         }
-        md.push_str("\n");
+        md.push('\n');
     }
 
     // Evidence summary.

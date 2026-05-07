@@ -497,7 +497,7 @@ fn verify_sig_with_certs(
             if self.found_good {
                 Ok(())
             } else {
-                Err(anyhow::anyhow!("No valid signatures found in bundle manifest").into())
+                Err(anyhow::anyhow!("No valid signatures found in bundle manifest"))
             }
         }
     }

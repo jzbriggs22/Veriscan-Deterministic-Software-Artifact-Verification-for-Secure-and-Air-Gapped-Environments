@@ -268,7 +268,7 @@ impl VerificationHelper for SigHelper {
                 .verification_error
                 .clone()
                 .unwrap_or_else(|| "No valid signatures found".to_string());
-            Err(anyhow::anyhow!(reason).into())
+            Err(anyhow::anyhow!(reason))
         }
     }
 }
