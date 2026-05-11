@@ -1,0 +1,69 @@
+# AI Agent Governance Configuration
+# ===================================
+# Drift thresholds, high-risk case patterns, and rollback rules.
+# All numeric thresholds should be set BEFORE the agent goes to production.
+# Changing thresholds after the fact undermines the governance guarantee.
+
+# How many decisions per category form the baseline (oldest N decisions)
+baseline_window: 100
+
+# Rolling window size for comparison (most-recent N decisions)
+detection_window: 20
+
+default_thresholds:
+  warning_score: 0.40     # Drift score above this → WARNING alert
+  critical_score: 0.70    # Drift score above this → CRITICAL alert
+  min_baseline_size: 30   # Minimum baseline decisions before detection runs
+  min_detection_size: 10  # Minimum recent decisions before detection runs
+  max_error_rate: 0.15    # Absolute error-rate ceiling → CRITICAL regardless of score
+
+high_risk_categories:
+  - category: billing_dispute
+    display_name: "Billing Disputes"
+    weight: 1.5            # Score multiplier: billing errors are costly
+    thresholds:
+      warning_score: 0.35
+      critical_score: 0.65
+      min_baseline_size: 20
+      min_detection_size: 5
+      max_error_rate: 0.12
+
+  - category: fraud_claim
+    display_name: "Fraud Claims"
+    weight: 2.0            # Highest weight: fraud errors have regulatory exposure
+    thresholds:
+      warning_score: 0.30
+      critical_score: 0.60
+      min_baseline_size: 15
+      min_detection_size: 5
+      max_error_rate: 0.10
+
+  - category: policy_sensitive
+    display_name: "Policy-Sensitive"
+    weight: 1.2
+    thresholds:
+      warning_score: 0.40
+      critical_score: 0.70
+      min_baseline_size: 20
+      min_detection_size: 5
+      max_error_rate: 0.15
+
+# Keyword/regex patterns for automatic case categorization
+# (applied to case_text when category is not explicitly set)
+category_patterns:
+  billing_dispute:
+    - "(?i)(billing|charge|invoice|refund|overcharg|credit\\s+card|payment\\s+dispute)"
+  fraud_claim:
+    - "(?i)(fraud|unauthori[zs]ed|scam|stolen|identity\\s+theft|suspicious\\s+charge)"
+  policy_sensitive:
+    - "(?i)(legal|compliance|regulator|policy\\s+violat|gdpr|hipaa|lawsuit|attorney)"
+
+# Rollback rules — evaluated in order; first match triggers rollback
+rollback_rules:
+  - description: "Error rate on any high-risk category exceeds 15%"
+    condition: "error_rate > 0.15"
+    severity: critical
+
+  - description: "Drift score on high-risk category exceeds critical threshold"
+    condition: "drift_score > 0.70"
+    severity: critical
