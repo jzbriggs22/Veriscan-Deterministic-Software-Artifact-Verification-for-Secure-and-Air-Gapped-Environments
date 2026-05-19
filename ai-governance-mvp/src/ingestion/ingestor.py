@@ -3,14 +3,80 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
+from typing import Optional
 
 from ..governance.config import GovernanceConfig
-from ..governance.schema import AgentDecision, CaseCategory
+from ..governance.schema import AgentDecision, CaseCategory, DecisionOutcome
+from ..governance.structured import (
+    GovernanceDecision,
+    StructuredOutputError,
+    StructuredOutputParser,
+    get_parser,
+)
 from .store import DecisionStore
 
 
 class ValidationError(Exception):
     pass
+
+
+# ── Risk-level → CaseCategory mapping ─────────────────────────────────────────
+
+_RISK_TO_CATEGORY: dict[str, CaseCategory] = {
+    # Explicit high-risk levels trigger high-risk categories when no better
+    # category match is available from the case_category field.
+    "critical": CaseCategory.FRAUD_CLAIM,  # critical risk defaults to fraud
+    "high": CaseCategory.BILLING_DISPUTE,
+}
+
+
+def _governance_decision_to_agent_decision(
+    gd: GovernanceDecision,
+    case_id: str,
+    agent_version: str,
+    processing_time_ms: float = 500.0,
+    timestamp: Optional[datetime] = None,
+) -> AgentDecision:
+    """
+    Convert a GovernanceDecision (structured output contract) to an AgentDecision
+    (storage / detection schema).
+
+    Case category resolution order:
+      1. GovernanceDecision.case_category mapped to CaseCategory enum
+      2. If mapping fails, derive from risk_level
+      3. Fall back to UNKNOWN
+    """
+    # Resolve category
+    try:
+        category = CaseCategory(gd.case_category)
+    except ValueError:
+        category = _RISK_TO_CATEGORY.get(gd.risk_level, CaseCategory.UNKNOWN)
+
+    # Resolve outcome from decision text heuristics (conservative)
+    dl = gd.decision.lower()
+    if any(w in dl for w in ("escalat", "human review", "manual")):
+        outcome = DecisionOutcome.ESCALATED
+    elif any(w in dl for w in ("error", "fail", "unable", "cannot")):
+        outcome = DecisionOutcome.ERROR
+    elif any(w in dl for w in ("reject", "deny", "block", "decline")):
+        outcome = DecisionOutcome.REJECTED
+    else:
+        outcome = DecisionOutcome.RESOLVED
+
+    return AgentDecision(
+        case_id=case_id,
+        category=category,
+        outcome=outcome,
+        confidence=gd.confidence,
+        timestamp=timestamp or datetime.utcnow(),
+        agent_version=agent_version,
+        processing_time_ms=processing_time_ms,
+        metadata={
+            "risk_level": gd.risk_level,
+            "flags": gd.flags,
+            "governance_decision": gd.decision,
+        },
+    )
 
 
 class DecisionIngestor:
@@ -19,6 +85,7 @@ class DecisionIngestor:
     def __init__(self, store: DecisionStore, config: GovernanceConfig) -> None:
         self._store = store
         self._config = config
+        self._parser: StructuredOutputParser = get_parser()
         # Pre-compile category patterns
         self._compiled: dict[CaseCategory, list[re.Pattern]] = {}
         for cat_str, patterns in config.category_patterns.items():
@@ -49,7 +116,6 @@ class DecisionIngestor:
         or UNKNOWN if no pattern matches.
         """
         if decision.category != CaseCategory.UNKNOWN and decision.category != CaseCategory.ROUTINE:
-            # Trust explicit category set by the caller
             return decision.category
 
         text = decision.case_text
@@ -57,7 +123,6 @@ class DecisionIngestor:
             if any(p.search(text) for p in patterns):
                 return cat
 
-        # If the caller set ROUTINE explicitly, respect it; else UNKNOWN
         if decision.category == CaseCategory.ROUTINE:
             return CaseCategory.ROUTINE
         return CaseCategory.UNKNOWN
@@ -72,12 +137,50 @@ class DecisionIngestor:
         if not ok:
             raise ValidationError(f"Invalid decision {decision.decision_id}: {msg}")
 
-        # Apply text-based categorization when caller sends UNKNOWN
         if decision.category in (CaseCategory.UNKNOWN,):
             decision.category = self.categorize(decision)
 
         self._store.store_decision(decision)
         return decision
+
+    def ingest_governance_decision(
+        self,
+        gd: GovernanceDecision,
+        case_id: str,
+        agent_version: str,
+        processing_time_ms: float = 500.0,
+        timestamp: Optional[datetime] = None,
+    ) -> AgentDecision:
+        """
+        Ingest a GovernanceDecision (structured output) directly.
+
+        Converts to AgentDecision, runs normal validation + categorization,
+        and stores. This is the preferred path when the agent produces
+        structured output via outlines or instructor.
+        """
+        agent_decision = _governance_decision_to_agent_decision(
+            gd, case_id, agent_version, processing_time_ms, timestamp
+        )
+        return self.ingest(agent_decision)
+
+    def parse_and_ingest(
+        self,
+        raw_output: str,
+        case_id: str,
+        agent_version: str,
+        processing_time_ms: float = 500.0,
+        timestamp: Optional[datetime] = None,
+    ) -> AgentDecision:
+        """
+        Parse raw agent text output as a GovernanceDecision, then ingest it.
+
+        Raises StructuredOutputError if the text cannot be parsed.
+        Raises ValidationError if the parsed decision is invalid.
+        """
+        gd = self._parser.parse(raw_output)
+        return self.ingest_governance_decision(
+            gd, case_id, agent_version, processing_time_ms, timestamp
+        )
 
     def ingest_batch(
         self, decisions: list[AgentDecision]
@@ -102,3 +205,4 @@ class DecisionIngestor:
             self._store.store_decisions_batch(accepted)
 
         return len(accepted), errors
+
