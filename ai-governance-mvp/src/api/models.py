@@ -63,6 +63,38 @@ class DriftResultOut(BaseModel):
     baseline_stats: Optional[CategoryStatsOut]
     recent_stats: Optional[CategoryStatsOut]
     metric_drifts: list[MetricDriftOut]
+    trend: str = "unknown"  # improving | stable | degrading | unknown
+
+
+class DriftHistoryPointOut(BaseModel):
+    result_id: str
+    timestamp: datetime
+    category: str
+    drift_score: float
+    insufficient_data: bool
+    baseline_n: int
+    recent_n: int
+    baseline_resolution_rate: float
+    recent_resolution_rate: float
+    baseline_error_rate: float
+    recent_error_rate: float
+
+
+class CategoryHistoryOut(BaseModel):
+    category: str
+    points: list[DriftHistoryPointOut]
+    current_drift_score: float
+    trend: str                    # improving | stable | degrading | unknown
+    trend_delta: float            # drift_score change vs prior point
+    total_detection_cycles: int
+
+
+class SchedulerStatusOut(BaseModel):
+    running: bool
+    interval_seconds: float
+    cycle_count: int
+    last_run_at: Optional[datetime]
+    last_error: Optional[str]
 
 
 class AlertOut(BaseModel):

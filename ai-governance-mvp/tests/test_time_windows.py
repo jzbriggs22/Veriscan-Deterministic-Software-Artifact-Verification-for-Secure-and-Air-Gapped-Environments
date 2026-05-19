@@ -232,17 +232,18 @@ def test_time_window_detector_drifted_agent(store):
     cfg = _make_time_window_config()
     now = datetime.utcnow()
 
+    # Large samples + extreme drift → Cohen's h well above threshold regardless of RNG state
     baseline = make_decision_batch(
-        CaseCategory.BILLING_DISPUTE, 30,
+        CaseCategory.BILLING_DISPUTE, 80,
         resolve_p=0.83, error_p=0.04, escalate_p=0.10,
         base_time=now - timedelta(days=20),
-        time_step_seconds=1800,
+        time_step_seconds=600,
     )
     drifted = make_decision_batch(
-        CaseCategory.BILLING_DISPUTE, 10,
-        resolve_p=0.40, error_p=0.25, escalate_p=0.30,
+        CaseCategory.BILLING_DISPUTE, 40,
+        resolve_p=0.20, error_p=0.50, escalate_p=0.25,
         base_time=now - timedelta(hours=20),
-        time_step_seconds=900,
+        time_step_seconds=300,
     )
     store.store_decisions_batch(baseline)
     store.store_decisions_batch(drifted)
@@ -251,7 +252,7 @@ def test_time_window_detector_drifted_agent(store):
     result = detector.detect_category(CaseCategory.BILLING_DISPUTE)
     assert result is not None
     assert not result.insufficient_data
-    assert result.drift_score > 0.4
+    assert result.drift_score > 0.4, f"Expected high drift, got {result.drift_score:.3f}"
 
 
 def test_time_window_detector_insufficient_baseline(store):

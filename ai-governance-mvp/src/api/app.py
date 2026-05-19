@@ -1,15 +1,16 @@
 """FastAPI application for the AI Governance MVP REST API."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from ..detection.detector import DriftDetector
 from ..engine.alerts import AlertEngine
 from ..engine.rollback import RollbackEngine
+from ..engine.scheduler import DetectionScheduler
 from ..governance.config import GovernanceConfig
 from ..governance.schema import (
     AgentDecision,
@@ -20,9 +21,11 @@ from ..ingestion.ingestor import DecisionIngestor
 from ..ingestion.store import DecisionStore
 from .models import (
     AlertOut,
+    CategoryHistoryOut,
     CategoryStatsOut,
     DecisionBatchIn,
     DecisionIn,
+    DriftHistoryPointOut,
     DriftResultOut,
     GovernanceReportOut,
     GovernanceStatusOut,
@@ -32,6 +35,7 @@ from .models import (
     ResolveRollbackIn,
     ResolveRollbackOut,
     RollbackEventOut,
+    SchedulerStatusOut,
 )
 
 app = FastAPI(
@@ -59,20 +63,23 @@ _ingestor: Optional[DecisionIngestor] = None
 _detector: Optional[DriftDetector] = None
 _alert_engine: Optional[AlertEngine] = None
 _rollback_engine: Optional[RollbackEngine] = None
+_scheduler: Optional[DetectionScheduler] = None
 
 
 def configure(
     config: GovernanceConfig,
     store: DecisionStore,
+    scheduler: Optional[DetectionScheduler] = None,
 ) -> None:
     """Wire up application-level singletons. Call before serving requests."""
-    global _config, _store, _ingestor, _detector, _alert_engine, _rollback_engine
+    global _config, _store, _ingestor, _detector, _alert_engine, _rollback_engine, _scheduler
     _config = config
     _store = store
     _ingestor = DecisionIngestor(store, config)
     _detector = DriftDetector(store, config)
     _alert_engine = AlertEngine(store, config)
     _rollback_engine = RollbackEngine(store, config)
+    _scheduler = scheduler
 
 
 def get_config() -> GovernanceConfig:
@@ -111,6 +118,31 @@ def get_rollback_engine() -> RollbackEngine:
     return _rollback_engine
 
 
+def get_scheduler() -> Optional[DetectionScheduler]:
+    return _scheduler  # may be None — endpoints must handle that gracefully
+
+
+# ── Trend computation ──────────────────────────────────────────────────────────
+
+def _compute_trend(history: list[dict]) -> tuple[str, float]:
+    """
+    Derive trend from the two most-recent drift history points.
+    Returns (trend_label, delta) where delta = current - previous.
+    Trend labels: improving | stable | degrading | unknown
+    """
+    valid = [p for p in history if not p["insufficient_data"]]
+    if len(valid) < 2:
+        return "unknown", 0.0
+    current = valid[0]["drift_score"]
+    previous = valid[1]["drift_score"]
+    delta = current - previous
+    if delta < -0.05:
+        return "improving", delta
+    if delta > 0.05:
+        return "degrading", delta
+    return "stable", delta
+
+
 # ── Serialization helpers ──────────────────────────────────────────────────────
 
 def _cat_stats_out(stats) -> Optional[CategoryStatsOut]:
@@ -127,7 +159,7 @@ def _cat_stats_out(stats) -> Optional[CategoryStatsOut]:
     )
 
 
-def _drift_result_out(r) -> DriftResultOut:
+def _drift_result_out(r, trend: str = "unknown") -> DriftResultOut:
     return DriftResultOut(
         category=r.category.value,
         drift_score=r.drift_score,
@@ -135,6 +167,7 @@ def _drift_result_out(r) -> DriftResultOut:
         insufficient_data_reason=r.insufficient_data_reason,
         baseline_stats=_cat_stats_out(r.baseline_stats),
         recent_stats=_cat_stats_out(r.recent_stats),
+        trend=trend,
         metric_drifts=[
             MetricDriftOut(
                 metric_name=m.metric_name,
@@ -148,6 +181,22 @@ def _drift_result_out(r) -> DriftResultOut:
             )
             for m in r.metric_drifts
         ],
+    )
+
+
+def _history_point_out(p: dict) -> DriftHistoryPointOut:
+    return DriftHistoryPointOut(
+        result_id=p["result_id"],
+        timestamp=p["timestamp"],
+        category=p["category"],
+        drift_score=p["drift_score"],
+        insufficient_data=p["insufficient_data"],
+        baseline_n=p["baseline_n"],
+        recent_n=p["recent_n"],
+        baseline_resolution_rate=p["baseline_resolution_rate"],
+        recent_resolution_rate=p["recent_resolution_rate"],
+        baseline_error_rate=p["baseline_error_rate"],
+        recent_error_rate=p["recent_error_rate"],
     )
 
 
@@ -245,13 +294,14 @@ def get_governance_report(
 ) -> GovernanceReportOut:
     """
     Run a full governance detection pass and return a complete report.
+    Persists the results to drift_history so trend analysis is available.
     This is the primary endpoint for dashboard and monitoring integrations.
     """
     drift_results = detector.run_detection()
-    new_alerts = alert_engine.process_drift_results(drift_results)
+    alert_engine.process_drift_results(drift_results)
+    store.store_drift_results_batch(drift_results)
     active_rollback = store.get_active_rollback()
 
-    from ..governance.schema import DriftResult
     status_val = "healthy"
     for r in drift_results:
         if r.insufficient_data:
@@ -262,10 +312,17 @@ def get_governance_report(
         if r.drift_score >= 0.40:
             status_val = "drifting"
 
+    # Enrich each result with trend from stored history
+    enriched = []
+    for r in drift_results:
+        history = store.get_drift_history(r.category, limit=5)
+        trend, _ = _compute_trend(history)
+        enriched.append(_drift_result_out(r, trend=trend))
+
     return GovernanceReportOut(
         generated_at=datetime.utcnow(),
         status=status_val,
-        drift_results=[_drift_result_out(r) for r in drift_results],
+        drift_results=enriched,
         active_alerts=[_alert_out(a) for a in alert_engine.get_active_alerts()],
         active_rollback=_rollback_out(active_rollback) if active_rollback else None,
         total_decisions=store.total_count(),
@@ -371,6 +428,112 @@ def get_normal_metrics(
         mean_processing_time_ms=mean_pt,
         decisions_by_category=store.count_by_category(),
     )
+
+
+# ── Drift history endpoints ────────────────────────────────────────────────────
+
+@app.get(
+    "/governance/categories/{category}/history",
+    response_model=CategoryHistoryOut,
+    tags=["Governance"],
+)
+def get_category_history(
+    category: str,
+    limit: int = Query(default=50, ge=1, le=500),
+    hours: Optional[int] = Query(default=None, ge=1, description="Restrict to last N hours"),
+    store: DecisionStore = Depends(get_store),
+) -> CategoryHistoryOut:
+    """
+    Return the drift score history for a single category.
+    Use this to see if the agent is improving, stable, or degrading over time.
+    """
+    try:
+        cat = CaseCategory(category)
+    except ValueError:
+        raise HTTPException(status_code=404, detail=f"Unknown category: {category!r}")
+
+    since = datetime.utcnow() - timedelta(hours=hours) if hours else None
+    history = store.get_drift_history(cat, limit=limit, since=since)
+    trend, delta = _compute_trend(history)
+    current_score = history[0]["drift_score"] if history else 0.0
+
+    return CategoryHistoryOut(
+        category=category,
+        points=[_history_point_out(p) for p in history],
+        current_drift_score=current_score,
+        trend=trend,
+        trend_delta=delta,
+        total_detection_cycles=len(history),
+    )
+
+
+@app.get(
+    "/governance/history",
+    response_model=list[DriftHistoryPointOut],
+    tags=["Governance"],
+)
+def get_all_drift_history(
+    limit: int = Query(default=100, ge=1, le=1000),
+    hours: Optional[int] = Query(default=None, ge=1, description="Restrict to last N hours"),
+    store: DecisionStore = Depends(get_store),
+) -> list[DriftHistoryPointOut]:
+    """Return drift history across all categories, newest first."""
+    since = datetime.utcnow() - timedelta(hours=hours) if hours else None
+    history = store.get_all_drift_history(limit=limit, since=since)
+    return [_history_point_out(p) for p in history]
+
+
+# ── Scheduler endpoints ────────────────────────────────────────────────────────
+
+@app.get("/scheduler/status", response_model=SchedulerStatusOut, tags=["System"])
+def get_scheduler_status(
+    scheduler: Optional[DetectionScheduler] = Depends(get_scheduler),
+) -> SchedulerStatusOut:
+    """Return background detection scheduler state."""
+    if scheduler is None:
+        return SchedulerStatusOut(
+            running=False,
+            interval_seconds=0.0,
+            cycle_count=0,
+            last_run_at=None,
+            last_error=None,
+        )
+    return SchedulerStatusOut(
+        running=scheduler.is_running(),
+        interval_seconds=scheduler._interval_seconds,
+        cycle_count=scheduler.cycle_count,
+        last_run_at=scheduler.last_run_at,
+        last_error=scheduler.last_error,
+    )
+
+
+@app.post("/scheduler/run-now", tags=["System"])
+def trigger_detection_now(
+    store: DecisionStore = Depends(get_store),
+    detector: DriftDetector = Depends(get_detector),
+    alert_engine: AlertEngine = Depends(get_alert_engine),
+    rollback_engine: RollbackEngine = Depends(get_rollback_engine),
+) -> dict:
+    """
+    Trigger an immediate detection cycle outside the normal schedule.
+    Useful for on-demand checks from CI/CD pipelines or manual inspection.
+    """
+    drift_results = detector.run_detection()
+    new_alerts = alert_engine.process_drift_results(drift_results)
+    rollback = rollback_engine.maybe_trigger(drift_results)
+    store.store_drift_results_batch(drift_results)
+
+    return {
+        "categories_checked": len(drift_results),
+        "new_alerts": len(new_alerts),
+        "rollback_triggered": rollback is not None,
+        "rollback_event_id": rollback.event_id if rollback else None,
+        "drift_scores": {
+            r.category.value: round(r.drift_score, 4)
+            for r in drift_results
+            if not r.insufficient_data
+        },
+    }
 
 
 # ── Health ─────────────────────────────────────────────────────────────────────

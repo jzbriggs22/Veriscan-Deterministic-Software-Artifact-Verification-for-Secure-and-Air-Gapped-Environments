@@ -15,6 +15,7 @@ from ..governance.schema import (
     CaseCategory,
     DecisionOutcome,
     DriftAlert,
+    DriftResult,
     RollbackEvent,
 )
 
@@ -59,6 +60,26 @@ CREATE TABLE IF NOT EXISTS rollback_events (
     resolved_at        TEXT,
     resolution_note    TEXT DEFAULT ''
 );
+
+CREATE TABLE IF NOT EXISTS drift_history (
+    result_id          TEXT PRIMARY KEY,
+    timestamp          TEXT NOT NULL,
+    category           TEXT NOT NULL,
+    drift_score        REAL NOT NULL,
+    insufficient_data  INTEGER NOT NULL DEFAULT 0,
+    insufficient_data_reason TEXT DEFAULT '',
+    baseline_n         INTEGER DEFAULT 0,
+    recent_n           INTEGER DEFAULT 0,
+    baseline_resolution_rate REAL DEFAULT 0.0,
+    recent_resolution_rate   REAL DEFAULT 0.0,
+    baseline_error_rate      REAL DEFAULT 0.0,
+    recent_error_rate        REAL DEFAULT 0.0,
+    metric_drifts_json TEXT DEFAULT '[]'
+);
+CREATE INDEX IF NOT EXISTS idx_drift_history_category_ts
+    ON drift_history (category, timestamp);
+CREATE INDEX IF NOT EXISTS idx_drift_history_ts
+    ON drift_history (timestamp);
 """
 
 
@@ -354,6 +375,111 @@ class DecisionStore:
             )
             return cur.rowcount > 0
 
+    # ── Drift history ──────────────────────────────────────────────────────────
+
+    def store_drift_result(self, result: DriftResult) -> None:
+        """Persist a single drift detection result for historical trend analysis."""
+        metric_drifts_json = json.dumps([
+            {
+                "metric_name": m.metric_name,
+                "baseline_value": m.baseline_value,
+                "recent_value": m.recent_value,
+                "absolute_change": m.absolute_change,
+                "relative_change_pct": m.relative_change_pct,
+                "effect_size": m.effect_size,
+                "p_value": m.p_value,
+                "drift_score": m.drift_score,
+            }
+            for m in result.metric_drifts
+        ])
+        with self._cursor() as (conn, cur):
+            cur.execute(
+                """INSERT OR REPLACE INTO drift_history
+                   (result_id, timestamp, category, drift_score,
+                    insufficient_data, insufficient_data_reason,
+                    baseline_n, recent_n,
+                    baseline_resolution_rate, recent_resolution_rate,
+                    baseline_error_rate, recent_error_rate,
+                    metric_drifts_json)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    result.result_id,
+                    result.timestamp.isoformat(),
+                    result.category.value,
+                    result.drift_score,
+                    int(result.insufficient_data),
+                    result.insufficient_data_reason,
+                    result.baseline_stats.sample_size if result.baseline_stats else 0,
+                    result.recent_stats.sample_size if result.recent_stats else 0,
+                    result.baseline_stats.resolution_rate if result.baseline_stats else 0.0,
+                    result.recent_stats.resolution_rate if result.recent_stats else 0.0,
+                    result.baseline_stats.error_rate if result.baseline_stats else 0.0,
+                    result.recent_stats.error_rate if result.recent_stats else 0.0,
+                    metric_drifts_json,
+                ),
+            )
+
+    def store_drift_results_batch(self, results: list[DriftResult]) -> None:
+        for r in results:
+            self.store_drift_result(r)
+
+    def get_drift_history(
+        self,
+        category: CaseCategory,
+        limit: int = 100,
+        since: Optional[datetime] = None,
+    ) -> list[dict]:
+        """Return stored drift scores for a category, newest first."""
+        with self._cursor() as (conn, cur):
+            if since:
+                cur.execute(
+                    """SELECT * FROM drift_history
+                       WHERE category = ? AND timestamp >= ?
+                       ORDER BY timestamp DESC LIMIT ?""",
+                    (category.value, since.isoformat(), limit),
+                )
+            else:
+                cur.execute(
+                    """SELECT * FROM drift_history
+                       WHERE category = ?
+                       ORDER BY timestamp DESC LIMIT ?""",
+                    (category.value, limit),
+                )
+            return [_row_to_drift_history(r) for r in cur.fetchall()]
+
+    def get_all_drift_history(
+        self,
+        limit: int = 200,
+        since: Optional[datetime] = None,
+    ) -> list[dict]:
+        """Return stored drift scores across all categories, newest first."""
+        with self._cursor() as (conn, cur):
+            if since:
+                cur.execute(
+                    """SELECT * FROM drift_history
+                       WHERE timestamp >= ?
+                       ORDER BY timestamp DESC LIMIT ?""",
+                    (since.isoformat(), limit),
+                )
+            else:
+                cur.execute(
+                    "SELECT * FROM drift_history ORDER BY timestamp DESC LIMIT ?",
+                    (limit,),
+                )
+            return [_row_to_drift_history(r) for r in cur.fetchall()]
+
+    def get_latest_drift_result(self, category: CaseCategory) -> Optional[dict]:
+        """Return the most recent stored drift result for a category."""
+        with self._cursor() as (conn, cur):
+            cur.execute(
+                """SELECT * FROM drift_history
+                   WHERE category = ?
+                   ORDER BY timestamp DESC LIMIT 1""",
+                (category.value,),
+            )
+            row = cur.fetchone()
+            return _row_to_drift_history(row) if row else None
+
 
 # ── Row deserializers ──────────────────────────────────────────────────────────
 
@@ -404,3 +530,21 @@ def _row_to_rollback(row: sqlite3.Row) -> RollbackEvent:
         ),
         resolution_note=row["resolution_note"] or "",
     )
+
+
+def _row_to_drift_history(row: sqlite3.Row) -> dict:
+    return {
+        "result_id": row["result_id"],
+        "timestamp": datetime.fromisoformat(row["timestamp"]),
+        "category": row["category"],
+        "drift_score": row["drift_score"],
+        "insufficient_data": bool(row["insufficient_data"]),
+        "insufficient_data_reason": row["insufficient_data_reason"] or "",
+        "baseline_n": row["baseline_n"],
+        "recent_n": row["recent_n"],
+        "baseline_resolution_rate": row["baseline_resolution_rate"],
+        "recent_resolution_rate": row["recent_resolution_rate"],
+        "baseline_error_rate": row["baseline_error_rate"],
+        "recent_error_rate": row["recent_error_rate"],
+        "metric_drifts": json.loads(row["metric_drifts_json"] or "[]"),
+    }
