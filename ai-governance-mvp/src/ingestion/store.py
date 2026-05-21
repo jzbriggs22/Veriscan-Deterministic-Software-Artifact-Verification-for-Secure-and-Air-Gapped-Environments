@@ -281,6 +281,35 @@ class DecisionStore:
             raw = row[0] if row else None
             return datetime.fromisoformat(raw) if raw else None
 
+    def get_decisions_for_drill_down(
+        self,
+        category: CaseCategory,
+        hours: int = 24,
+        outcome: Optional[str] = None,
+        limit: int = 100,
+    ) -> list[AgentDecision]:
+        """
+        Return recent decisions for a category, optionally filtered by outcome.
+        Used by the drill-down API to explain what drove a drift alert.
+        """
+        since = (datetime.utcnow() - timedelta(hours=hours)).isoformat()
+        with self._cursor() as (conn, cur):
+            if outcome:
+                cur.execute(
+                    """SELECT * FROM decisions
+                       WHERE category = ? AND timestamp >= ? AND outcome = ?
+                       ORDER BY timestamp DESC LIMIT ?""",
+                    (category.value, since, outcome, limit),
+                )
+            else:
+                cur.execute(
+                    """SELECT * FROM decisions
+                       WHERE category = ? AND timestamp >= ?
+                       ORDER BY timestamp DESC LIMIT ?""",
+                    (category.value, since, limit),
+                )
+            return [_row_to_decision(r) for r in cur.fetchall()]
+
     # ── Normal metrics ─────────────────────────────────────────────────────────
 
     def get_normal_metrics_window(self, limit: int = 200) -> list[AgentDecision]:

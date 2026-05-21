@@ -154,3 +154,35 @@ class NormalMetricsOut(BaseModel):
     overall_error_rate: float
     mean_processing_time_ms: float
     decisions_by_category: dict[str, int]
+
+
+class DecisionOut(BaseModel):
+    """A single agent decision — returned by the category drill-down endpoint."""
+    decision_id: str
+    case_id: str
+    category: str
+    outcome: str
+    confidence: float
+    timestamp: datetime
+    agent_version: str
+    processing_time_ms: float
+    case_text: str
+    metadata: dict[str, Any]
+
+
+class CategoryDecisionsOut(BaseModel):
+    """Drill-down: recent decisions for one category, with aggregate stats."""
+    category: str
+    hours: int
+    total: int
+    decisions: list[DecisionOut]
+    outcome_counts: dict[str, int]
+    resolution_rate: float
+    error_rate: float
+    escalation_rate: float
+    mean_confidence: float
+
+
+class EventBrokerStatusOut(BaseModel):
+    subscriber_count: int
+    published_total: int

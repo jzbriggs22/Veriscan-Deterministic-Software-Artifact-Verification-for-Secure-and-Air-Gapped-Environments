@@ -6,9 +6,11 @@ from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse, StreamingResponse
 
 from ..detection.detector import DriftDetector
 from ..engine.alerts import AlertEngine
+from ..engine.events import GovernanceEventBroker, get_broker
 from ..engine.rollback import RollbackEngine
 from ..engine.scheduler import DetectionScheduler
 from ..governance.config import GovernanceConfig
@@ -21,12 +23,15 @@ from ..ingestion.ingestor import DecisionIngestor
 from ..ingestion.store import DecisionStore
 from .models import (
     AlertOut,
+    CategoryDecisionsOut,
     CategoryHistoryOut,
     CategoryStatsOut,
     DecisionBatchIn,
     DecisionIn,
+    DecisionOut,
     DriftHistoryPointOut,
     DriftResultOut,
+    EventBrokerStatusOut,
     GovernanceReportOut,
     GovernanceStatusOut,
     IngestionResult,
@@ -541,3 +546,221 @@ def trigger_detection_now(
 @app.get("/health", tags=["System"])
 def health() -> dict:
     return {"status": "ok", "version": app.version}
+
+
+# ── SSE event stream ───────────────────────────────────────────────────────────
+
+@app.get("/governance/events/stream", tags=["Streaming"])
+async def stream_governance_events(
+    heartbeat: int = Query(default=30, ge=5, le=120, description="Keep-alive interval in seconds"),
+) -> StreamingResponse:
+    """
+    Server-Sent Events stream for real-time governance events.
+
+    Event types pushed to connected clients:
+      - ``drift_detected``     — per-category drift score after each detection cycle
+      - ``alert_fired``        — a new DriftAlert was raised
+      - ``rollback_triggered`` — the rollback engine fired
+      - ``cycle_complete``     — summary after a full detection cycle
+
+    Each event has the shape::
+
+        event: <type>
+        data: {"event": "<type>", "timestamp": "...", ...fields}
+
+    Keep-alive comments (``": keepalive"``) are sent every ``heartbeat`` seconds
+    to prevent proxy / load-balancer timeouts.
+
+    Connect with::
+
+        curl -N http://localhost:8000/governance/events/stream
+    """
+    broker = get_broker()
+
+    async def _event_generator():
+        async for frame in broker.subscribe(heartbeat_seconds=float(heartbeat)):
+            yield frame
+
+    return StreamingResponse(
+        _event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",  # disable nginx buffering
+        },
+    )
+
+
+@app.get("/governance/events/status", response_model=EventBrokerStatusOut, tags=["Streaming"])
+def get_event_broker_status() -> EventBrokerStatusOut:
+    """Return SSE broker statistics: how many clients are connected."""
+    broker = get_broker()
+    return EventBrokerStatusOut(
+        subscriber_count=broker.subscriber_count,
+        published_total=broker.published_total,
+    )
+
+
+# ── Prometheus metrics ─────────────────────────────────────────────────────────
+
+@app.get("/prometheus/metrics", response_class=PlainTextResponse, tags=["Metrics"])
+def prometheus_metrics(
+    store: DecisionStore = Depends(get_store),
+    detector: DriftDetector = Depends(get_detector),
+    alert_engine: AlertEngine = Depends(get_alert_engine),
+    rollback_engine: RollbackEngine = Depends(get_rollback_engine),
+) -> str:
+    """
+    Prometheus text exposition format metrics.
+    Scrape with Prometheus or inspect with curl to see governance health at a glance.
+
+    Metrics exposed:
+      governance_drift_score{category}  — latest drift score per category (gauge)
+      governance_decisions_total{category} — cumulative decision count (gauge)
+      governance_alerts_active           — current unacknowledged alert count (gauge)
+      governance_rollback_active         — 1 if rollback is active, else 0 (gauge)
+      governance_error_rate{category}    — error rate in detection window (gauge)
+      governance_escalation_rate{category} — escalation rate in detection window (gauge)
+      governance_resolution_rate{category} — resolution rate in detection window (gauge)
+    """
+    drift_results = detector.run_detection()
+    active_alerts = alert_engine.get_active_alerts()
+    rollback_active = 1 if rollback_engine.is_rollback_active() else 0
+    counts = store.count_by_category()
+
+    lines: list[str] = []
+
+    def _g(name: str, help_text: str, typ: str = "gauge") -> None:
+        lines.append(f"# HELP {name} {help_text}")
+        lines.append(f"# TYPE {name} {typ}")
+
+    # Drift scores
+    _g("governance_drift_score", "Current drift score per case category (0=no drift, 1=maximum drift)")
+    for r in drift_results:
+        if not r.insufficient_data:
+            lines.append(f'governance_drift_score{{category="{r.category.value}"}} {r.drift_score:.6f}')
+    lines.append("")
+
+    # Decision counts
+    _g("governance_decisions_total", "Total decisions stored per category")
+    for cat, cnt in sorted(counts.items()):
+        lines.append(f'governance_decisions_total{{category="{cat}"}} {cnt}')
+    lines.append("")
+
+    # Alert count
+    _g("governance_alerts_active", "Number of unacknowledged governance alerts")
+    lines.append(f"governance_alerts_active {len(active_alerts)}")
+    lines.append("")
+
+    # Rollback status
+    _g("governance_rollback_active", "1 if a rollback is currently active, 0 otherwise")
+    lines.append(f"governance_rollback_active {rollback_active}")
+    lines.append("")
+
+    # Per-category rates from recent window
+    _g("governance_error_rate", "Error rate in the current detection window per category")
+    for r in drift_results:
+        if r.recent_stats:
+            lines.append(
+                f'governance_error_rate{{category="{r.category.value}"}} {r.recent_stats.error_rate:.6f}'
+            )
+    lines.append("")
+
+    _g("governance_escalation_rate", "Escalation rate in the current detection window per category")
+    for r in drift_results:
+        if r.recent_stats:
+            lines.append(
+                f'governance_escalation_rate{{category="{r.category.value}"}} {r.recent_stats.escalation_rate:.6f}'
+            )
+    lines.append("")
+
+    _g("governance_resolution_rate", "Resolution rate in the current detection window per category")
+    for r in drift_results:
+        if r.recent_stats:
+            lines.append(
+                f'governance_resolution_rate{{category="{r.category.value}"}} {r.recent_stats.resolution_rate:.6f}'
+            )
+    lines.append("")
+
+    return "\n".join(lines)
+
+
+# ── Case drill-down ────────────────────────────────────────────────────────────
+
+@app.get(
+    "/governance/categories/{category}/decisions",
+    response_model=CategoryDecisionsOut,
+    tags=["Governance"],
+)
+def get_category_decisions(
+    category: str,
+    hours: int = Query(default=24, ge=1, le=720, description="Look-back window in hours"),
+    outcome: Optional[str] = Query(default=None, description="Filter by outcome: resolved|error|escalated|rejected"),
+    limit: int = Query(default=100, ge=1, le=500),
+    store: DecisionStore = Depends(get_store),
+) -> CategoryDecisionsOut:
+    """
+    Drill down into the individual decisions that drove a drift alert.
+
+    Returns the most recent decisions for a category within the requested
+    time window so PMs can see exactly which cases are behaving abnormally.
+
+    Use ``outcome=error`` to see the error-producing decisions, or leave it
+    unset to get the full picture.
+    """
+    try:
+        cat = CaseCategory(category)
+    except ValueError:
+        raise HTTPException(status_code=404, detail=f"Unknown category: {category!r}")
+
+    valid_outcomes = {"resolved", "error", "escalated", "rejected", None}
+    if outcome not in valid_outcomes:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid outcome filter: {outcome!r}. Must be one of: resolved, error, escalated, rejected",
+        )
+
+    decisions = store.get_decisions_for_drill_down(
+        category=cat,
+        hours=hours,
+        outcome=outcome,
+        limit=limit,
+    )
+
+    total = len(decisions)
+    outcome_counts: dict[str, int] = {"resolved": 0, "error": 0, "escalated": 0, "rejected": 0}
+    for d in decisions:
+        outcome_counts[d.outcome.value] = outcome_counts.get(d.outcome.value, 0) + 1
+
+    resolution_rate = outcome_counts["resolved"] / total if total else 0.0
+    error_rate = outcome_counts["error"] / total if total else 0.0
+    escalation_rate = outcome_counts["escalated"] / total if total else 0.0
+    mean_confidence = sum(d.confidence for d in decisions) / total if total else 0.0
+
+    decision_outs = [
+        DecisionOut(
+            decision_id=d.decision_id,
+            case_id=d.case_id,
+            category=d.category.value,
+            outcome=d.outcome.value,
+            confidence=d.confidence,
+            timestamp=d.timestamp,
+            agent_version=d.agent_version,
+            processing_time_ms=d.processing_time_ms,
+            case_text=d.case_text,
+            metadata=d.metadata,
+        )
+        for d in decisions
+    ]
+
+    return CategoryDecisionsOut(
+        category=category,
+        hours=hours,
+        total=total,
+        decisions=decision_outs,
+        outcome_counts=outcome_counts,
+        resolution_rate=resolution_rate,
+        error_rate=error_rate,
+        escalation_rate=escalation_rate,
+        mean_confidence=mean_confidence,
+    )

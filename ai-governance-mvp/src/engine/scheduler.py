@@ -9,6 +9,7 @@ from typing import Callable, Optional
 
 from ..detection.detector import DriftDetector
 from ..engine.alerts import AlertEngine
+from ..engine.events import GovernanceEventBroker
 from ..engine.rollback import RollbackEngine
 from ..engine.webhooks import WebhookDispatcher
 from ..ingestion.store import DecisionStore
@@ -40,6 +41,7 @@ class DetectionScheduler:
         rollback_engine: RollbackEngine,
         dispatcher: Optional[WebhookDispatcher] = None,
         on_cycle: Optional[Callable[[list], None]] = None,
+        event_broker: Optional[GovernanceEventBroker] = None,
     ) -> None:
         self._store = store
         self._detector = detector
@@ -47,6 +49,7 @@ class DetectionScheduler:
         self._rollback_engine = rollback_engine
         self._dispatcher = dispatcher
         self._on_cycle = on_cycle  # optional hook for tests / external observers
+        self._event_broker = event_broker  # SSE broker; None = SSE disabled
 
         self._interval_seconds: float = 300.0
         self._thread: Optional[threading.Thread] = None
@@ -121,6 +124,37 @@ class DetectionScheduler:
             self.cycle_count += 1
             self.last_run_at = datetime.utcnow()
             self.last_error = None
+
+            # Publish SSE events
+            if self._event_broker:
+                for r in drift_results:
+                    if not r.insufficient_data:
+                        self._event_broker.publish("drift_detected", {
+                            "category": r.category.value,
+                            "drift_score": round(r.drift_score, 4),
+                            "insufficient_data": r.insufficient_data,
+                        })
+                for alert in new_alerts:
+                    self._event_broker.publish("alert_fired", {
+                        "alert_id": alert.alert_id,
+                        "severity": alert.severity.value,
+                        "category": alert.category.value,
+                        "message": alert.message,
+                        "drift_score": round(alert.drift_score, 4),
+                    })
+                if rollback_event:
+                    self._event_broker.publish("rollback_triggered", {
+                        "event_id": rollback_event.event_id,
+                        "reason": rollback_event.reason,
+                        "category": rollback_event.category.value if rollback_event.category else None,
+                        "drift_score": round(rollback_event.drift_score, 4),
+                    })
+                self._event_broker.publish("cycle_complete", {
+                    "cycle": self.cycle_count,
+                    "categories_checked": len(drift_results),
+                    "new_alerts": len(new_alerts),
+                    "rollback_triggered": rollback_event is not None,
+                })
 
             if self._on_cycle:
                 try:
