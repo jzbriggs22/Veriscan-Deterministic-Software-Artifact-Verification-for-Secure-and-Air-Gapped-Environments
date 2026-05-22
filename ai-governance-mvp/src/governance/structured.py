@@ -23,7 +23,8 @@ from pydantic import BaseModel, Field, field_validator
 
 try:
     import outlines as _outlines
-    _OUTLINES_AVAILABLE = True
+    # outlines v0.x has generate submodule; v1.x uses outlines.generator
+    _OUTLINES_AVAILABLE = hasattr(_outlines, "generate") or hasattr(_outlines, "generator")
 except ImportError:  # pragma: no cover
     _OUTLINES_AVAILABLE = False
 

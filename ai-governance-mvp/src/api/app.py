@@ -6,7 +6,7 @@ from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import PlainTextResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, StreamingResponse
 
 from ..detection.detector import DriftDetector
 from ..engine.alerts import AlertEngine
@@ -22,6 +22,7 @@ from ..governance.schema import (
 from ..ingestion.ingestor import DecisionIngestor
 from ..ingestion.store import DecisionStore
 from ..governance.preflight import PreflightValidator
+from .html_report import build_html_report
 from .models import (
     AgentVersionSummaryOut,
     AlertOut,
@@ -339,6 +340,29 @@ def get_governance_report(
         total_decisions=store.total_count(),
         decisions_by_category=store.count_by_category(),
     )
+
+
+@app.get("/governance/report/html", response_class=HTMLResponse, tags=["Governance"])
+def get_governance_report_html(
+    store: DecisionStore = Depends(get_store),
+    config: GovernanceConfig = Depends(get_config),
+    detector: DriftDetector = Depends(get_detector),
+    alert_engine: AlertEngine = Depends(get_alert_engine),
+    rollback_engine: RollbackEngine = Depends(get_rollback_engine),
+) -> HTMLResponse:
+    """
+    Return a self-contained HTML governance report that PMs can open in a browser.
+    No JavaScript framework, no external resources — single file, inline CSS.
+    Equivalent to /governance/report but rendered as a visual snapshot.
+    """
+    html = build_html_report(
+        store=store,
+        config=config,
+        detector=detector,
+        alert_engine=alert_engine,
+        rollback_engine=rollback_engine,
+    )
+    return HTMLResponse(content=html)
 
 
 @app.get("/governance/status", response_model=GovernanceStatusOut, tags=["Governance"])
