@@ -301,10 +301,10 @@ class TestVersionAPI:
 
         for version, resolve_p, error_p in [
             ("v1.0", 0.83, 0.04),
-            ("v2.0", 0.65, 0.20),
+            ("v2.0", 0.55, 0.30),  # large gap ensures DEGRADED even with RNG variance
         ]:
             decisions = make_decision_batch(
-                CaseCategory.BILLING_DISPUTE, 20,
+                CaseCategory.BILLING_DISPUTE, 80,
                 resolve_p=resolve_p, error_p=error_p, escalate_p=0.08,
                 agent_version=version,
                 base_time=now - timedelta(days=10),
@@ -331,7 +331,7 @@ class TestVersionAPI:
         v1 = next(v for v in body if v["agent_version"] == "v1.0")
         assert 0.0 <= v1["resolution_rate"] <= 1.0
         assert 0.0 <= v1["error_rate"] <= 1.0
-        assert v1["total"] == 20
+        assert v1["total"] == 80
 
     def test_version_decisions_returns_200(self, client_versioned):
         resp = client_versioned.get("/governance/versions/v1.0/decisions")
