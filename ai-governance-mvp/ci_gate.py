@@ -29,8 +29,8 @@ Options:
   --fail-on-warning      Exit 1 on WARNING as well as BLOCKED
 
 Environment variables (override config defaults):
-  GOVERNANCE_MIN_DETECTION_SIZE   Minimum decisions per category (int)
-  GOVERNANCE_ERROR_RATE_THRESHOLD Max tolerated error rate (float, 0–1)
+  GOVERNANCE_DETECTION_WINDOW     Minimum decisions needed per category (int)
+  GOVERNANCE_MAX_ERROR_RATE       Max tolerated error rate (float, 0–1)
 """
 from __future__ import annotations
 
@@ -47,8 +47,21 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from src.governance.config import GovernanceConfig
 from src.governance.preflight import PreflightValidator
-from src.governance.structured import GovernanceDecision, StructuredOutputError
 
+
+# ── Internal exception used to carry exit codes through the call stack ─────────
+
+class _GateError(Exception):
+    def __init__(self, msg: str, exit_code: int = 3) -> None:
+        super().__init__(msg)
+        self.exit_code = exit_code
+
+
+def _die(msg: str, exit_code: int = 3) -> None:
+    raise _GateError(msg, exit_code)
+
+
+# ── Helpers ────────────────────────────────────────────────────────────────────
 
 def _load_decisions(path: str) -> list[dict]:
     try:
@@ -69,43 +82,24 @@ def _load_decisions(path: str) -> list[dict]:
     return data
 
 
-def _die(msg: str, exit_code: int = 3) -> None:
-    print(f"ERROR: {msg}", file=sys.stderr)
-    sys.exit(exit_code)
-
-
 def _build_config() -> GovernanceConfig:
+    """Build config with optional env var overrides on default_thresholds."""
     cfg = GovernanceConfig.default()
-    env_min = os.environ.get("GOVERNANCE_MIN_DETECTION_SIZE")
-    env_err = os.environ.get("GOVERNANCE_ERROR_RATE_THRESHOLD")
-    if env_min is not None:
+    env_window = os.environ.get("GOVERNANCE_DETECTION_WINDOW")
+    env_err = os.environ.get("GOVERNANCE_MAX_ERROR_RATE")
+
+    if env_window is not None:
         try:
-            cfg = GovernanceConfig(
-                min_detection_size=int(env_min),
-                error_rate_threshold=cfg.error_rate_threshold,
-                drift_score_warning=cfg.drift_score_warning,
-                drift_score_critical=cfg.drift_score_critical,
-                rollback_drift_score=cfg.rollback_drift_score,
-                min_baseline_size=cfg.min_baseline_size,
-                baseline_window_days=cfg.baseline_window_days,
-                detection_window_hours=cfg.detection_window_hours,
-            )
+            cfg.default_thresholds.min_detection_size = int(env_window)
         except (ValueError, TypeError) as e:
-            _die(f"Invalid GOVERNANCE_MIN_DETECTION_SIZE: {e}", exit_code=3)
+            _die(f"Invalid GOVERNANCE_DETECTION_WINDOW: {e}", exit_code=3)
+
     if env_err is not None:
         try:
-            cfg = GovernanceConfig(
-                min_detection_size=cfg.min_detection_size,
-                error_rate_threshold=float(env_err),
-                drift_score_warning=cfg.drift_score_warning,
-                drift_score_critical=cfg.drift_score_critical,
-                rollback_drift_score=cfg.rollback_drift_score,
-                min_baseline_size=cfg.min_baseline_size,
-                baseline_window_days=cfg.baseline_window_days,
-                detection_window_hours=cfg.detection_window_hours,
-            )
+            cfg.default_thresholds.max_error_rate = float(env_err)
         except (ValueError, TypeError) as e:
-            _die(f"Invalid GOVERNANCE_ERROR_RATE_THRESHOLD: {e}", exit_code=3)
+            _die(f"Invalid GOVERNANCE_MAX_ERROR_RATE: {e}", exit_code=3)
+
     return cfg
 
 
@@ -125,18 +119,23 @@ def _report_to_dict(report) -> dict:
             {
                 "category": r.category,
                 "total": r.total,
-                "high_risk_count": r.high_risk_count,
+                "valid_schema": r.valid_schema,
+                "high_risk_correct": r.high_risk_correct,
                 "error_rate": r.error_rate,
                 "resolution_rate": r.resolution_rate,
+                "escalation_rate": r.escalation_rate,
+                "rejection_rate": r.rejection_rate,
                 "mean_confidence": r.mean_confidence,
                 "schema_errors": r.schema_errors,
-                "issues": r.issues,
+                "issues": r.threshold_violations,
                 "passed": r.passed,
             }
             for r in report.category_results
         ],
     }
 
+
+# ── Main ───────────────────────────────────────────────────────────────────────
 
 def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(
@@ -158,7 +157,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     )
     parser.add_argument(
         "--quiet", action="store_true",
-        help="Suppress non-JSON output",
+        help="Suppress non-JSON output (still writes JSON to stdout)",
     )
     parser.add_argument(
         "--fail-on-warning", action="store_true",
@@ -167,6 +166,14 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     args = parser.parse_args(argv)
 
+    try:
+        return _run(args)
+    except _GateError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return exc.exit_code
+
+
+def _run(args) -> int:
     if not args.quiet:
         print(f"[ci_gate] Loading decisions from: {args.decisions}")
 
@@ -183,7 +190,6 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     report = validator.validate_batch(decisions, agent_version=args.agent_version)
     report_dict = _report_to_dict(report)
-
     json_output = json.dumps(report_dict, indent=2)
     print(json_output)
 
@@ -196,14 +202,13 @@ def main(argv: Optional[list[str]] = None) -> int:
             print(f"WARNING: Could not write report to {args.output!r}: {e}", file=sys.stderr)
 
     recommendation = report.recommendation
+
     if not args.quiet:
         print(f"\n[ci_gate] Recommendation: {recommendation}")
-        if report.threshold_violations:
-            for v in report.threshold_violations:
-                print(f"  VIOLATION: {v}")
-        if report.high_risk_failures:
-            for f in report.high_risk_failures:
-                print(f"  HIGH-RISK FAILURE: {f}")
+        for v in report.threshold_violations:
+            print(f"  VIOLATION: {v}")
+        for f in report.high_risk_failures:
+            print(f"  HIGH-RISK FAILURE: {f}")
 
     if recommendation == "BLOCKED":
         if not args.quiet:
@@ -212,7 +217,8 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     if recommendation == "WARNING" and args.fail_on_warning:
         if not args.quiet:
-            print("[ci_gate] DEPLOYMENT FLAGGED (--fail-on-warning) — advisory issues present.", file=sys.stderr)
+            print("[ci_gate] DEPLOYMENT FLAGGED (--fail-on-warning) — advisory issues present.",
+                  file=sys.stderr)
         return 1
 
     if recommendation == "WARNING":
