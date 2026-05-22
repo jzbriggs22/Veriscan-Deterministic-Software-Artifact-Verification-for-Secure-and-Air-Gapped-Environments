@@ -186,3 +186,73 @@ class CategoryDecisionsOut(BaseModel):
 class EventBrokerStatusOut(BaseModel):
     subscriber_count: int
     published_total: int
+
+
+# ── Pre-flight validation ──────────────────────────────────────────────────────
+
+class PreflightDecisionIn(BaseModel):
+    """A candidate agent decision submitted for pre-deployment validation."""
+    case_category: str
+    risk_level: str
+    decision: str = Field(..., min_length=1)
+    confidence: float = Field(..., ge=0.0, le=1.0)
+    flags: list[str] = Field(default_factory=list)
+    _expected_category: str = ""  # optional ground-truth annotation
+
+
+class PreflightBatchIn(BaseModel):
+    agent_version: str = Field(..., min_length=1)
+    decisions: list[dict[str, Any]] = Field(..., min_length=1, max_length=500)
+
+
+class CategoryPreflightResultOut(BaseModel):
+    category: str
+    total: int
+    valid_schema: int
+    resolution_rate: float
+    error_rate: float
+    escalation_rate: float
+    mean_confidence: float
+    passed: bool
+    threshold_violations: list[str]
+
+
+class PreflightReportOut(BaseModel):
+    passed: bool
+    agent_version: str
+    generated_at: datetime
+    total_submitted: int
+    valid_decisions: int
+    schema_error_count: int
+    recommendation: str   # SAFE_TO_DEPLOY | WARNING | BLOCKED
+    summary: str
+    threshold_violations: list[str]
+    high_risk_failures: list[str]
+    category_results: list[CategoryPreflightResultOut]
+
+
+# ── Agent version tracking ─────────────────────────────────────────────────────
+
+class AgentVersionSummaryOut(BaseModel):
+    agent_version: str
+    total: int
+    resolution_rate: float
+    error_rate: float
+    escalation_rate: float
+    mean_confidence: float
+    first_seen: Optional[str]
+    last_seen: Optional[str]
+    decisions_by_category: dict[str, int]
+
+
+class VersionComparisonOut(BaseModel):
+    version_a: str
+    version_b: str
+    total_a: int
+    total_b: int
+    resolution_rate_delta: float   # b - a; positive = improved
+    error_rate_delta: float        # b - a; negative = improved
+    escalation_rate_delta: float
+    confidence_delta: float
+    verdict: str                   # IMPROVED | DEGRADED | STABLE | INSUFFICIENT_DATA
+    notes: list[str]

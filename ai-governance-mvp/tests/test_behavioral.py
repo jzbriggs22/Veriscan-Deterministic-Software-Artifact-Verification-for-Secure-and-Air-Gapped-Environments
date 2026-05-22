@@ -50,34 +50,9 @@ pytestmark = pytest.mark.behavioral
 
 
 # ── Session-scoped rollback gate ───────────────────────────────────────────────
-
-@pytest.fixture(scope="session")
-def behavioral_store():
-    """Dedicated store for rollback-gate tracking across the behavioral suite."""
-    return DecisionStore()
-
-
-@pytest.fixture(scope="session", autouse=True)
-def rollback_gate(behavioral_store, request):
-    """
-    After the behavioral session, if any test failed, record a RollbackEvent.
-
-    This is the CI governance gate: a failed behavioral run is treated as
-    evidence of agent regression and triggers the rollback machinery.
-    """
-    yield
-    failed = any(
-        report.failed
-        for report in request.session.items
-        if hasattr(report, "failed")
-    )
-    if failed:
-        event = RollbackEvent(
-            reason="Behavioral regression suite failed — agent output no longer matches governance fixtures.",
-            triggered_by="behavioral_test_suite",
-            drift_score=1.0,
-        )
-        behavioral_store.store_rollback_event(event)
+# The actual gate is implemented as pytest_sessionfinish in conftest.py, which
+# correctly tracks behavioral failures via pytest_runtest_logreport.
+# This fixture exposes the shared store for tests that need to verify the gate.
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────

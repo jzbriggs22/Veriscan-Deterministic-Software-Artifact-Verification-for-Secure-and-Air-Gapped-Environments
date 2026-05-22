@@ -312,6 +312,86 @@ class DecisionStore:
 
     # ── Normal metrics ─────────────────────────────────────────────────────────
 
+    # ── Agent version queries ──────────────────────────────────────────────────
+
+    def get_agent_versions(self) -> list[str]:
+        """Return distinct agent versions ordered by most-recent first."""
+        with self._cursor() as (conn, cur):
+            cur.execute(
+                """SELECT agent_version, MAX(timestamp) as last_seen
+                   FROM decisions GROUP BY agent_version
+                   ORDER BY last_seen DESC"""
+            )
+            return [r["agent_version"] for r in cur.fetchall()]
+
+    def get_decisions_by_version(
+        self,
+        agent_version: str,
+        category: Optional[CaseCategory] = None,
+        limit: int = 1000,
+    ) -> list[AgentDecision]:
+        """Return decisions for a specific agent version, optionally filtered by category."""
+        with self._cursor() as (conn, cur):
+            if category:
+                cur.execute(
+                    """SELECT * FROM decisions
+                       WHERE agent_version = ? AND category = ?
+                       ORDER BY timestamp DESC LIMIT ?""",
+                    (agent_version, category.value, limit),
+                )
+            else:
+                cur.execute(
+                    """SELECT * FROM decisions
+                       WHERE agent_version = ?
+                       ORDER BY timestamp DESC LIMIT ?""",
+                    (agent_version, limit),
+                )
+            return [_row_to_decision(r) for r in cur.fetchall()]
+
+    def get_version_summary(self, agent_version: str) -> dict:
+        """
+        Return aggregate stats for an agent version across all categories.
+        Returns empty dict if the version has no decisions.
+        """
+        with self._cursor() as (conn, cur):
+            cur.execute(
+                """SELECT
+                     COUNT(*) as total,
+                     SUM(CASE WHEN outcome='resolved' THEN 1 ELSE 0 END) as resolved,
+                     SUM(CASE WHEN outcome='error' THEN 1 ELSE 0 END) as errors,
+                     SUM(CASE WHEN outcome='escalated' THEN 1 ELSE 0 END) as escalated,
+                     SUM(CASE WHEN outcome='rejected' THEN 1 ELSE 0 END) as rejected,
+                     AVG(confidence) as mean_confidence,
+                     MIN(timestamp) as first_seen,
+                     MAX(timestamp) as last_seen
+                   FROM decisions WHERE agent_version = ?""",
+                (agent_version,),
+            )
+            row = cur.fetchone()
+            if not row or row["total"] == 0:
+                return {}
+
+            total = row["total"]
+            cur.execute(
+                "SELECT category, COUNT(*) as cnt FROM decisions WHERE agent_version = ? GROUP BY category",
+                (agent_version,),
+            )
+            by_cat = {r["category"]: r["cnt"] for r in cur.fetchall()}
+
+            return {
+                "agent_version": agent_version,
+                "total": total,
+                "resolution_rate": (row["resolved"] or 0) / total,
+                "error_rate": (row["errors"] or 0) / total,
+                "escalation_rate": (row["escalated"] or 0) / total,
+                "rejection_rate": (row["rejected"] or 0) / total,
+                "mean_confidence": row["mean_confidence"] or 0.0,
+                "first_seen": row["first_seen"],
+                "last_seen": row["last_seen"],
+                "decisions_by_category": by_cat,
+            }
+
+
     def get_normal_metrics_window(self, limit: int = 200) -> list[AgentDecision]:
         return self.get_all_recent(limit)
 

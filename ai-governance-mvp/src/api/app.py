@@ -21,10 +21,13 @@ from ..governance.schema import (
 )
 from ..ingestion.ingestor import DecisionIngestor
 from ..ingestion.store import DecisionStore
+from ..governance.preflight import PreflightValidator
 from .models import (
+    AgentVersionSummaryOut,
     AlertOut,
     CategoryDecisionsOut,
     CategoryHistoryOut,
+    CategoryPreflightResultOut,
     CategoryStatsOut,
     DecisionBatchIn,
     DecisionIn,
@@ -37,10 +40,13 @@ from .models import (
     IngestionResult,
     MetricDriftOut,
     NormalMetricsOut,
+    PreflightBatchIn,
+    PreflightReportOut,
     ResolveRollbackIn,
     ResolveRollbackOut,
     RollbackEventOut,
     SchedulerStatusOut,
+    VersionComparisonOut,
 )
 
 app = FastAPI(
@@ -763,4 +769,226 @@ def get_category_decisions(
         error_rate=error_rate,
         escalation_rate=escalation_rate,
         mean_confidence=mean_confidence,
+    )
+
+
+# ── Pre-flight validation ──────────────────────────────────────────────────────
+
+@app.post("/governance/preflight", response_model=PreflightReportOut, tags=["Governance"])
+def run_preflight(
+    payload: PreflightBatchIn,
+    config: GovernanceConfig = Depends(get_config),
+) -> PreflightReportOut:
+    """
+    Pre-deployment governance validation gate.
+
+    Submit a batch of agent decisions (from a candidate version) before deployment.
+    The validator checks schema validity, risk-level correctness, and error-rate
+    thresholds. Use this in CI/CD to block deployments that would fail governance.
+
+    Response field ``recommendation`` is one of:
+      - ``SAFE_TO_DEPLOY`` — all checks passed
+      - ``WARNING``        — schema issues but recoverable; human review recommended
+      - ``BLOCKED``        — threshold violations; deployment should not proceed
+    """
+    validator = PreflightValidator(config)
+    report = validator.validate_batch(payload.decisions, agent_version=payload.agent_version)
+
+    return PreflightReportOut(
+        passed=report.passed,
+        agent_version=report.agent_version,
+        generated_at=report.generated_at,
+        total_submitted=report.total_submitted,
+        valid_decisions=report.valid_decisions,
+        schema_error_count=report.schema_error_count,
+        recommendation=report.recommendation,
+        summary=report.summary,
+        threshold_violations=report.threshold_violations,
+        high_risk_failures=report.high_risk_failures,
+        category_results=[
+            CategoryPreflightResultOut(
+                category=r.category,
+                total=r.total,
+                valid_schema=r.valid_schema,
+                resolution_rate=r.resolution_rate,
+                error_rate=r.error_rate,
+                escalation_rate=r.escalation_rate,
+                mean_confidence=r.mean_confidence,
+                passed=r.passed,
+                threshold_violations=r.threshold_violations,
+            )
+            for r in report.category_results
+        ],
+    )
+
+
+# ── Agent version tracking ─────────────────────────────────────────────────────
+
+@app.get("/governance/versions", response_model=list[AgentVersionSummaryOut], tags=["Governance"])
+def list_agent_versions(
+    store: DecisionStore = Depends(get_store),
+) -> list[AgentVersionSummaryOut]:
+    """
+    List all agent versions that have submitted decisions, with aggregate stats.
+    Use this to see how each deployed version performed at a glance.
+    """
+    versions = store.get_agent_versions()
+    results: list[AgentVersionSummaryOut] = []
+    for v in versions:
+        summary = store.get_version_summary(v)
+        if summary:
+            results.append(AgentVersionSummaryOut(
+                agent_version=summary["agent_version"],
+                total=summary["total"],
+                resolution_rate=summary["resolution_rate"],
+                error_rate=summary["error_rate"],
+                escalation_rate=summary["escalation_rate"],
+                mean_confidence=summary["mean_confidence"],
+                first_seen=summary["first_seen"],
+                last_seen=summary["last_seen"],
+                decisions_by_category=summary["decisions_by_category"],
+            ))
+    return results
+
+
+@app.get(
+    "/governance/versions/{version}/decisions",
+    response_model=CategoryDecisionsOut,
+    tags=["Governance"],
+)
+def get_version_decisions(
+    version: str,
+    category: Optional[str] = Query(default=None, description="Filter by category"),
+    limit: int = Query(default=100, ge=1, le=500),
+    store: DecisionStore = Depends(get_store),
+) -> CategoryDecisionsOut:
+    """
+    Return decisions for a specific agent version, optionally filtered by category.
+    Use this to drill down into what a specific version did on high-risk cases.
+    """
+    cat: Optional[CaseCategory] = None
+    if category:
+        try:
+            cat = CaseCategory(category)
+        except ValueError:
+            raise HTTPException(status_code=404, detail=f"Unknown category: {category!r}")
+
+    decisions = store.get_decisions_by_version(version, category=cat, limit=limit)
+    if not decisions and not store.get_version_summary(version):
+        raise HTTPException(status_code=404, detail=f"Agent version {version!r} not found")
+
+    total = len(decisions)
+    outcome_counts: dict[str, int] = {"resolved": 0, "error": 0, "escalated": 0, "rejected": 0}
+    for d in decisions:
+        outcome_counts[d.outcome.value] = outcome_counts.get(d.outcome.value, 0) + 1
+
+    resolution_rate = outcome_counts["resolved"] / total if total else 0.0
+    error_rate = outcome_counts["error"] / total if total else 0.0
+    escalation_rate = outcome_counts["escalated"] / total if total else 0.0
+    mean_confidence = sum(d.confidence for d in decisions) / total if total else 0.0
+
+    return CategoryDecisionsOut(
+        category=category or "all",
+        hours=0,
+        total=total,
+        decisions=[
+            DecisionOut(
+                decision_id=d.decision_id,
+                case_id=d.case_id,
+                category=d.category.value,
+                outcome=d.outcome.value,
+                confidence=d.confidence,
+                timestamp=d.timestamp,
+                agent_version=d.agent_version,
+                processing_time_ms=d.processing_time_ms,
+                case_text=d.case_text,
+                metadata=d.metadata,
+            )
+            for d in decisions
+        ],
+        outcome_counts=outcome_counts,
+        resolution_rate=resolution_rate,
+        error_rate=error_rate,
+        escalation_rate=escalation_rate,
+        mean_confidence=mean_confidence,
+    )
+
+
+@app.get(
+    "/governance/versions/{version_a}/compare/{version_b}",
+    response_model=VersionComparisonOut,
+    tags=["Governance"],
+)
+def compare_versions(
+    version_a: str,
+    version_b: str,
+    store: DecisionStore = Depends(get_store),
+) -> VersionComparisonOut:
+    """
+    Compare governance metrics between two agent versions (a=baseline, b=candidate).
+
+    Positive resolution_rate_delta and negative error_rate_delta mean b is better.
+    ``verdict`` is one of: IMPROVED | DEGRADED | STABLE | INSUFFICIENT_DATA.
+
+    Use this in deployment pipelines: compare the previous stable version (a)
+    against the candidate (b) to confirm it has not regressed on governance metrics.
+    """
+    summary_a = store.get_version_summary(version_a)
+    summary_b = store.get_version_summary(version_b)
+
+    if not summary_a:
+        raise HTTPException(status_code=404, detail=f"Version {version_a!r} has no decisions")
+    if not summary_b:
+        raise HTTPException(status_code=404, detail=f"Version {version_b!r} has no decisions")
+
+    min_sample = 5
+    notes: list[str] = []
+
+    if summary_a["total"] < min_sample or summary_b["total"] < min_sample:
+        return VersionComparisonOut(
+            version_a=version_a,
+            version_b=version_b,
+            total_a=summary_a["total"],
+            total_b=summary_b["total"],
+            resolution_rate_delta=0.0,
+            error_rate_delta=0.0,
+            escalation_rate_delta=0.0,
+            confidence_delta=0.0,
+            verdict="INSUFFICIENT_DATA",
+            notes=[f"Minimum {min_sample} decisions required per version for comparison"],
+        )
+
+    res_delta = summary_b["resolution_rate"] - summary_a["resolution_rate"]
+    err_delta = summary_b["error_rate"] - summary_a["error_rate"]
+    esc_delta = summary_b["escalation_rate"] - summary_a["escalation_rate"]
+    conf_delta = summary_b["mean_confidence"] - summary_a["mean_confidence"]
+
+    # Verdict logic: error rate increase or resolution rate drop → degraded
+    if err_delta > 0.05 or res_delta < -0.05:
+        verdict = "DEGRADED"
+        if err_delta > 0.05:
+            notes.append(f"Error rate increased by {err_delta:.1%}")
+        if res_delta < -0.05:
+            notes.append(f"Resolution rate dropped by {abs(res_delta):.1%}")
+    elif res_delta > 0.05 and err_delta <= 0.0:
+        verdict = "IMPROVED"
+        notes.append(f"Resolution rate improved by {res_delta:.1%}")
+    else:
+        verdict = "STABLE"
+        notes.append("Metrics within ±5% — no significant change detected")
+
+    if conf_delta < -0.1:
+        notes.append(f"Mean confidence dropped by {abs(conf_delta):.2f} — agent is less certain")
+
+    return VersionComparisonOut(
+        version_a=version_a,
+        version_b=version_b,
+        total_a=summary_a["total"],
+        total_b=summary_b["total"],
+        resolution_rate_delta=round(res_delta, 4),
+        error_rate_delta=round(err_delta, 4),
+        escalation_rate_delta=round(esc_delta, 4),
+        confidence_delta=round(conf_delta, 4),
+        verdict=verdict,
+        notes=notes,
     )

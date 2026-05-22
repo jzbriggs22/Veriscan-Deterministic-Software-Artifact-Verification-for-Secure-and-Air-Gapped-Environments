@@ -1,4 +1,4 @@
-"""Shared pytest fixtures."""
+"""Shared pytest fixtures and governance rollback hook."""
 from __future__ import annotations
 
 import random
@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 import pytest
 
 from src.governance.config import GovernanceConfig
-from src.governance.schema import AgentDecision, CaseCategory, DecisionOutcome
+from src.governance.schema import AgentDecision, CaseCategory, DecisionOutcome, RollbackEvent
 from src.ingestion.store import DecisionStore
 
 rng = random.Random(0)
@@ -93,3 +93,45 @@ def populated_store(config: GovernanceConfig) -> DecisionStore:
                                         base_time=base_time)
         store.store_decisions_batch(decisions)
     return store
+
+
+# ── Behavioral test rollback gate ──────────────────────────────────────────────
+# Tracks failures for @pytest.mark.behavioral tests via a hook.
+# If any behavioral test fails the session, a RollbackEvent is stored — this
+# is the CI governance gate that blocks deployments when the agent regresses.
+
+_behavioral_failures: list[str] = []
+_behavioral_store: DecisionStore = DecisionStore()
+
+
+def pytest_runtest_logreport(report: pytest.TestReport) -> None:
+    """
+    Called after each test phase (setup/call/teardown).
+    Track behavioral test failures so the rollback gate can fire after the session.
+    """
+    if report.when == "call" and report.failed:
+        keywords = getattr(report, "keywords", {})
+        if "behavioral" in keywords:
+            _behavioral_failures.append(report.nodeid)
+
+
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    """
+    Called once after all tests complete.
+    If any behavioral tests failed, store a RollbackEvent as the governance
+    record of the regression.  In CI this record is inspectable via the API.
+    """
+    if _behavioral_failures:
+        event = RollbackEvent(
+            reason=(
+                f"Behavioral regression suite failed ({len(_behavioral_failures)} test(s)): "
+                + "; ".join(_behavioral_failures[:3])
+                + (" ..." if len(_behavioral_failures) > 3 else "")
+            ),
+            triggered_by="behavioral_test_suite",
+            drift_score=1.0,
+        )
+        try:
+            _behavioral_store.store_rollback_event(event)
+        except Exception:
+            pass  # never let the governance hook crash the test runner
