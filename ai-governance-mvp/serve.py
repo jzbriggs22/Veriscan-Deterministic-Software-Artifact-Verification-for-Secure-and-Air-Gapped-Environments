@@ -64,6 +64,7 @@ def main() -> None:
     from src.detection.detector import DriftDetector
     from src.engine.alerts import AlertEngine
     from src.engine.rollback import RollbackEngine
+    from src.engine.events import get_broker
     from src.engine.scheduler import DetectionScheduler
     from src.engine.webhooks import WebhookConfig, WebhookDispatcher
     from src.governance.config import GovernanceConfig
@@ -105,6 +106,9 @@ def main() -> None:
             alert_engine=alert_engine,
             rollback_engine=rollback_engine,
             dispatcher=dispatcher,
+            # Same singleton the /governance/events/stream endpoint reads from;
+            # without it the SSE stream carries only keep-alive heartbeats.
+            event_broker=get_broker(),
         )
         scheduler.start(interval_seconds=args.detection_interval)
         logger.info(

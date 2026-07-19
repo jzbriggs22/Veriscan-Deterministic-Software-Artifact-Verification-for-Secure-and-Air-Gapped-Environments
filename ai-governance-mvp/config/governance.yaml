@@ -4,11 +4,20 @@
 # All numeric thresholds should be set BEFORE the agent goes to production.
 # Changing thresholds after the fact undermines the governance guarantee.
 
-# How many decisions per category form the baseline (oldest N decisions)
-baseline_window: 100
+# Detection windows
+# ------------------
+# Two windowing modes exist. Time-anchored windows (below) are the default
+# and what production uses; the count-based windows further down apply ONLY
+# when time_window.use_time_windows is set to false.
+time_window:
+  use_time_windows: true       # false → fall back to count-based windows below
+  baseline_lookback_days: 30   # baseline spans [now - 30d, now - exclusion)
+  baseline_exclusion_hours: 168  # 7-day gap so drifted recent data can't contaminate the baseline
+  detection_hours: 24          # detection window is the most recent 24h
 
-# Rolling window size for comparison (most-recent N decisions)
-detection_window: 20
+# Count-based windows — used only when time_window.use_time_windows is false
+baseline_window: 100    # oldest N decisions per category form the baseline
+detection_window: 20    # most-recent N decisions per category to compare
 
 default_thresholds:
   warning_score: 0.40     # Drift score above this → WARNING alert

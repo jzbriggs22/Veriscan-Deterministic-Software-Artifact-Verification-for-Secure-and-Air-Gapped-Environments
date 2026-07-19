@@ -23,12 +23,15 @@ Usage:
 
 Options:
   --decisions FILE       Path to JSON file with decision array (required)
+  --config FILE          Governance YAML config (e.g. config/governance.yaml);
+                         omitted → built-in defaults
   --agent-version VER    Version string for this deployment (default: "unknown")
   --output FILE          Write JSON report to FILE in addition to stdout
   --quiet                Suppress non-JSON output (still writes JSON to stdout)
   --fail-on-warning      Exit 1 on WARNING as well as BLOCKED
 
-Environment variables (override config defaults):
+Environment variables (override the loaded config, applied to the default
+thresholds AND every high-risk category):
   GOVERNANCE_DETECTION_WINDOW     Minimum decisions needed per category (int)
   GOVERNANCE_MAX_ERROR_RATE       Max tolerated error rate (float, 0–1)
 """
@@ -82,23 +85,46 @@ def _load_decisions(path: str) -> list[dict]:
     return data
 
 
-def _build_config() -> GovernanceConfig:
-    """Build config with optional env var overrides on default_thresholds."""
-    cfg = GovernanceConfig.default()
+def _build_config(config_path: Optional[str] = None) -> GovernanceConfig:
+    """Build config (from YAML if given) with optional env var overrides.
+
+    Env overrides apply to the default thresholds and to every high-risk
+    category's thresholds — thresholds_for() resolves high-risk categories
+    to their own DriftThresholds objects, so mutating only the defaults
+    would leave exactly the categories the gate polices unaffected.
+    """
+    if config_path is not None:
+        try:
+            cfg = GovernanceConfig.from_yaml(config_path)
+        except FileNotFoundError:
+            _die(f"Config file not found: {config_path!r}", exit_code=3)
+        except (ValueError, KeyError) as e:
+            _die(f"Invalid config file {config_path!r}: {e}", exit_code=3)
+    else:
+        cfg = GovernanceConfig.default()
+
+    all_thresholds = [cfg.default_thresholds] + [
+        hrc.thresholds for hrc in cfg.high_risk_categories
+    ]
+
     env_window = os.environ.get("GOVERNANCE_DETECTION_WINDOW")
     env_err = os.environ.get("GOVERNANCE_MAX_ERROR_RATE")
 
     if env_window is not None:
         try:
-            cfg.default_thresholds.min_detection_size = int(env_window)
+            window = int(env_window)
         except (ValueError, TypeError) as e:
             _die(f"Invalid GOVERNANCE_DETECTION_WINDOW: {e}", exit_code=3)
+        for thresholds in all_thresholds:
+            thresholds.min_detection_size = window
 
     if env_err is not None:
         try:
-            cfg.default_thresholds.max_error_rate = float(env_err)
+            err_rate = float(env_err)
         except (ValueError, TypeError) as e:
             _die(f"Invalid GOVERNANCE_MAX_ERROR_RATE: {e}", exit_code=3)
+        for thresholds in all_thresholds:
+            thresholds.max_error_rate = err_rate
 
     return cfg
 
@@ -148,6 +174,11 @@ def main(argv: Optional[list[str]] = None) -> int:
         help="JSON file containing array of governance decision objects",
     )
     parser.add_argument(
+        "--config", metavar="FILE",
+        help="Governance YAML config (e.g. config/governance.yaml); "
+             "omitted → built-in defaults",
+    )
+    parser.add_argument(
         "--agent-version", default="unknown", metavar="VER",
         help="Version string for this deployment (default: unknown)",
     )
@@ -182,7 +213,7 @@ def _run(args) -> int:
     if not args.quiet:
         print(f"[ci_gate] Loaded {len(decisions)} decision(s) for version: {args.agent_version}")
 
-    cfg = _build_config()
+    cfg = _build_config(args.config)
     validator = PreflightValidator(cfg)
 
     if not args.quiet:
