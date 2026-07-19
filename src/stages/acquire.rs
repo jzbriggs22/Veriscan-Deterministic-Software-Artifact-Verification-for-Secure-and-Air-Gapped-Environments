@@ -117,11 +117,7 @@ async fn acquire_url(
 
     let client = build_client(policy.network_timeout_seconds)?;
 
-    let response = client
-        .get(url)
-        .send()
-        .await
-        .map_err(VeriError::Network)?;
+    let response = client.get(url).send().await.map_err(VeriError::Network)?;
 
     let status = response.status();
     if !status.is_success() {

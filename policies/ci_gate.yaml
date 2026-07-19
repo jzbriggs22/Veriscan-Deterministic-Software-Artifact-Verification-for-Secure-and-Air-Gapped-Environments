@@ -15,7 +15,6 @@ version: "1.0"
 
 # Signature: required for release artifacts
 require_signature: true
-allow_unsigned: false
 
 # Network: permitted in CI environments
 allow_network: true

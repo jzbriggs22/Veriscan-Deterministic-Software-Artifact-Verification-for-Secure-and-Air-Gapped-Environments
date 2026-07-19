@@ -10,7 +10,6 @@ version: "1.0"
 
 # Signature: required in air-gapped environments (no network fallback)
 require_signature: true
-allow_unsigned: false
 
 # Network: DISABLED — policy enforcer
 allow_network: false

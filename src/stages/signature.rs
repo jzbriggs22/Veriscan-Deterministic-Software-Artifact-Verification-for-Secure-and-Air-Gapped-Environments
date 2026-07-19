@@ -54,7 +54,12 @@ pub async fn run(
                 if policy.require_signature {
                     return Ok(SignatureStageResult {
                         result: SignatureResult::Missing,
-                        evidence: vec![build_evidence("missing", "", "", "Signature file not found at provided path")],
+                        evidence: vec![build_evidence(
+                            "missing",
+                            "",
+                            "",
+                            "Signature file not found at provided path",
+                        )],
                     });
                 }
                 return Ok(SignatureStageResult {
@@ -103,7 +108,10 @@ pub async fn run(
     let certs = load_trusted_keys(trusted_keys_dir, artifact_path)?;
 
     if certs.is_empty() {
-        warn!(stage = "signature", "No trusted public keys loaded; cannot verify");
+        warn!(
+            stage = "signature",
+            "No trusted public keys loaded; cannot verify"
+        );
         return Ok(SignatureStageResult {
             result: SignatureResult::Invalid {
                 reason: "No trusted public keys available for verification".to_string(),
@@ -299,11 +307,11 @@ fn verify_detached(
             reason: format!("Signature policy error: {}", e),
         })?;
 
-    verifier.verify_bytes(artifact).map_err(|e| {
-        VeriError::SignatureInvalid {
+    verifier
+        .verify_bytes(artifact)
+        .map_err(|e| VeriError::SignatureInvalid {
             reason: format!("Verification failed: {}", e),
-        }
-    })?;
+        })?;
 
     let helper = verifier.into_helper();
     let fp = helper
@@ -311,7 +319,9 @@ fn verify_detached(
         .ok_or_else(|| VeriError::SignatureInvalid {
             reason: "Verification succeeded but fingerprint unavailable".to_string(),
         })?;
-    let uid = helper.verified_uid.unwrap_or_else(|| "<no uid>".to_string());
+    let uid = helper
+        .verified_uid
+        .unwrap_or_else(|| "<no uid>".to_string());
 
     Ok((fp, uid))
 }

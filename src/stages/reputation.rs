@@ -46,10 +46,17 @@ pub async fn run(
     policy: &Policy,
     offline: bool,
 ) -> Result<ReputationStageResult, VeriError> {
-    info!(stage = "reputation", sha256 = sha256, "Starting reputation check");
+    info!(
+        stage = "reputation",
+        sha256 = sha256,
+        "Starting reputation check"
+    );
 
     if offline || !policy.allow_network {
-        info!(stage = "reputation", "Offline/no-network mode; reputation check skipped");
+        info!(
+            stage = "reputation",
+            "Offline/no-network mode; reputation check skipped"
+        );
         return Ok(ReputationStageResult {
             result: ReputationResult::Unknown {
                 reason: "Offline mode: reputation check unavailable".to_string(),
@@ -60,7 +67,11 @@ pub async fn run(
 
     // Check local cache first.
     if let Some(cached) = load_cache(sha256, policy) {
-        info!(stage = "reputation", sha256 = sha256, "Cache hit for reputation");
+        info!(
+            stage = "reputation",
+            sha256 = sha256,
+            "Cache hit for reputation"
+        );
         return Ok(build_from_cached(&cached));
     }
 
@@ -128,7 +139,10 @@ pub async fn run(
         });
     }
 
-    let body: serde_json::Value = resp.json().await.map_err(|e| VeriError::Internal(format!("VT response parse: {}", e)))?;
+    let body: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| VeriError::Internal(format!("VT response parse: {}", e)))?;
 
     let stats = &body["data"]["attributes"]["last_analysis_stats"];
     let engines_total = (stats["malicious"].as_u64().unwrap_or(0)
@@ -146,9 +160,7 @@ pub async fn run(
                 .unwrap_or_default()
         });
 
-    let link = body["data"]["links"]["self"]
-        .as_str()
-        .map(str::to_string);
+    let link = body["data"]["links"]["self"].as_str().map(str::to_string);
 
     let reputation_label = if engines_detected == 0 {
         "clean".to_string()
@@ -195,8 +207,7 @@ pub async fn run(
 }
 
 fn cache_path(sha256: &str, policy: &Policy) -> PathBuf {
-    Path::new(&policy.reputation_cache_dir)
-        .join(format!("{}.json", sha256))
+    Path::new(&policy.reputation_cache_dir).join(format!("{}.json", sha256))
 }
 
 fn load_cache(sha256: &str, policy: &Policy) -> Option<CachedReputation> {

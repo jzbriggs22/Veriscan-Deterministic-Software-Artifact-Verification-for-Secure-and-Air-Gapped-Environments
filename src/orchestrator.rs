@@ -11,7 +11,9 @@ use crate::config::{Policy, RunConfig};
 use crate::error::VeriError;
 use crate::evidence::{EvidenceItem, PipelineResults, VerificationStatus};
 use crate::report::{self, JsonReport};
-use crate::stages::{acquire, hash, inspect, malware, policy as policy_stage, reputation, signature};
+use crate::stages::{
+    acquire, hash, inspect, malware, policy as policy_stage, reputation, signature,
+};
 use crate::util::fs::sha256_file;
 use chrono::Utc;
 use tracing::{error, info};
@@ -210,7 +212,10 @@ pub async fn run_bundle_pipeline(
 }
 
 /// Assert the artifact has not been modified since `expected_sha256`.
-fn assert_no_mutation(artifact_path: &std::path::Path, expected_sha256: &str) -> Result<(), VeriError> {
+fn assert_no_mutation(
+    artifact_path: &std::path::Path,
+    expected_sha256: &str,
+) -> Result<(), VeriError> {
     let current = sha256_file(artifact_path)?;
     if current != expected_sha256 {
         return Err(VeriError::ArtifactMutated {

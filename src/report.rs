@@ -130,7 +130,10 @@ pub fn build_json_report(
             fingerprint: None,
             detail: None,
         },
-        SignatureResult::Verified { signer_uid, fingerprint } => SignatureInfo {
+        SignatureResult::Verified {
+            signer_uid,
+            fingerprint,
+        } => SignatureInfo {
             status: "verified".to_string(),
             signer_uid: Some(signer_uid.clone()),
             fingerprint: Some(fingerprint.clone()),
@@ -169,7 +172,11 @@ pub fn build_json_report(
             engine_version: Some(version.clone()),
             detections: vec![],
         },
-        MalwareResult::Detected { engine, version, detections } => MalwareScanInfo {
+        MalwareResult::Detected {
+            engine,
+            version,
+            detections,
+        } => MalwareScanInfo {
             status: "detected".to_string(),
             engine: Some(engine.clone()),
             engine_version: Some(version.clone()),
@@ -198,26 +205,34 @@ pub fn build_json_report(
             last_seen: None,
             link: None,
         },
-        ReputationResult::Clean { engines_total, engines_detected, source, last_seen, link } => {
-            ReputationInfo {
-                status: "clean".to_string(),
-                engines_total: Some(*engines_total),
-                engines_detected: Some(*engines_detected),
-                source: Some(source.clone()),
-                last_seen: last_seen.clone(),
-                link: link.clone(),
-            }
-        }
-        ReputationResult::Malicious { engines_total, engines_detected, source, last_seen, link } => {
-            ReputationInfo {
-                status: "malicious".to_string(),
-                engines_total: Some(*engines_total),
-                engines_detected: Some(*engines_detected),
-                source: Some(source.clone()),
-                last_seen: last_seen.clone(),
-                link: link.clone(),
-            }
-        }
+        ReputationResult::Clean {
+            engines_total,
+            engines_detected,
+            source,
+            last_seen,
+            link,
+        } => ReputationInfo {
+            status: "clean".to_string(),
+            engines_total: Some(*engines_total),
+            engines_detected: Some(*engines_detected),
+            source: Some(source.clone()),
+            last_seen: last_seen.clone(),
+            link: link.clone(),
+        },
+        ReputationResult::Malicious {
+            engines_total,
+            engines_detected,
+            source,
+            last_seen,
+            link,
+        } => ReputationInfo {
+            status: "malicious".to_string(),
+            engines_total: Some(*engines_total),
+            engines_detected: Some(*engines_detected),
+            source: Some(source.clone()),
+            last_seen: last_seen.clone(),
+            link: link.clone(),
+        },
         ReputationResult::Unknown { reason } => ReputationInfo {
             status: "unknown".to_string(),
             engines_total: None,
@@ -328,7 +343,10 @@ pub fn render_markdown(report: &JsonReport) -> String {
     md.push_str("| Field | Value |\n|---|---|\n");
     md.push_str(&format!("| Source | `{}` |\n", report.artifact.source));
     md.push_str(&format!("| Filename | `{}` |\n", report.artifact.filename));
-    md.push_str(&format!("| Size | {} bytes |\n", report.artifact.size_bytes));
+    md.push_str(&format!(
+        "| Size | {} bytes |\n",
+        report.artifact.size_bytes
+    ));
     md.push_str(&format!(
         "| File Type | {} |\n",
         report.inspection.file_type
@@ -358,10 +376,7 @@ pub fn render_markdown(report: &JsonReport) -> String {
 
     // Signature.
     md.push_str("## PGP Signature\n\n");
-    md.push_str(&format!(
-        "**Status:** `{}`\n\n",
-        report.signature.status
-    ));
+    md.push_str(&format!("**Status:** `{}`\n\n", report.signature.status));
     if let Some(uid) = &report.signature.signer_uid {
         md.push_str(&format!("**Signer:** {}\n\n", uid));
     }
@@ -374,10 +389,7 @@ pub fn render_markdown(report: &JsonReport) -> String {
 
     // Malware.
     md.push_str("## Malware Scan\n\n");
-    md.push_str(&format!(
-        "**Status:** `{}`",
-        report.malware_scan.status
-    ));
+    md.push_str(&format!("**Status:** `{}`", report.malware_scan.status));
     if let Some(engine) = &report.malware_scan.engine {
         md.push_str(&format!("  **Engine:** {}", engine));
     }
@@ -396,9 +408,10 @@ pub fn render_markdown(report: &JsonReport) -> String {
     // Reputation.
     md.push_str("## Reputation\n\n");
     md.push_str(&format!("**Status:** `{}`", report.reputation.status));
-    if let (Some(total), Some(detected)) =
-        (report.reputation.engines_total, report.reputation.engines_detected)
-    {
+    if let (Some(total), Some(detected)) = (
+        report.reputation.engines_total,
+        report.reputation.engines_detected,
+    ) {
         md.push_str(&format!("  **Engines:** {}/{} detected", detected, total));
     }
     if let Some(source) = &report.reputation.source {
@@ -476,8 +489,8 @@ pub fn render_markdown(report: &JsonReport) -> String {
 
 /// Write a JSON report to disk.
 pub fn write_json(report: &JsonReport, path: &Path) -> Result<(), crate::error::VeriError> {
-    let json =
-        serde_json::to_string_pretty(report).map_err(|e| crate::error::VeriError::Internal(e.to_string()))?;
+    let json = serde_json::to_string_pretty(report)
+        .map_err(|e| crate::error::VeriError::Internal(e.to_string()))?;
     crate::util::fs::write_bytes_atomic(path, json.as_bytes())
 }
 

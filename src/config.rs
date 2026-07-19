@@ -20,11 +20,6 @@ pub struct Policy {
     /// Require a valid PGP detached signature for the artifact.
     pub require_signature: bool,
 
-    /// Permit artifacts with no signature (only meaningful when
-    /// `require_signature` is false; documents that unsigned artifacts are
-    /// explicitly allowed, not just forgotten).
-    pub allow_unsigned: bool,
-
     /// Permit outbound network calls (reputation check, URL download, etc.).
     /// Set to false for air-gapped enforcement.
     pub allow_network: bool,
@@ -287,10 +282,7 @@ impl Policy {
             }
             if !clean.chars().all(|c| c.is_ascii_hexdigit()) {
                 return Err(VeriError::PolicyInvalid {
-                    reason: format!(
-                        "allow_signers entry '{}' contains non-hex characters",
-                        fp
-                    ),
+                    reason: format!("allow_signers entry '{}' contains non-hex characters", fp),
                 });
             }
         }

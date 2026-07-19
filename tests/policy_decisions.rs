@@ -95,7 +95,10 @@ fn test_malware_detected_always_fails_even_with_good_sig() {
         .iter()
         .filter(|t| t.matched && t.condition.contains("Malware"))
         .collect();
-    assert!(!malware_trace.is_empty(), "Malware rule must appear in trace");
+    assert!(
+        !malware_trace.is_empty(),
+        "Malware rule must appear in trace"
+    );
 }
 
 #[test]
@@ -118,7 +121,6 @@ fn test_reputation_malicious_always_fails() {
 fn test_missing_signature_with_require_sig_fails() {
     let mut policy = default_policy();
     policy.require_signature = true;
-    policy.allow_unsigned = false;
 
     let mut pipeline = clean_pipeline(&policy);
     pipeline.signature_status = SignatureResult::Missing;
@@ -158,7 +160,10 @@ fn test_signer_not_in_allowlist_fails() {
     };
 
     let result = evaluate(&pipeline, &policy).expect("evaluate");
-    assert!(result.status.is_failed(), "Signer not in allowlist must FAIL");
+    assert!(
+        result.status.is_failed(),
+        "Signer not in allowlist must FAIL"
+    );
 }
 
 #[test]
@@ -304,7 +309,9 @@ fn test_high_entropy_flag_is_evidence_not_standalone_fail() {
     assert!(
         matches!(
             result.status,
-            VerificationStatus::Verified | VerificationStatus::Unverified { .. } | VerificationStatus::Failed { .. }
+            VerificationStatus::Verified
+                | VerificationStatus::Unverified { .. }
+                | VerificationStatus::Failed { .. }
         ),
         "Result must be a valid status"
     );
@@ -313,7 +320,10 @@ fn test_high_entropy_flag_is_evidence_not_standalone_fail() {
 #[test]
 fn test_airgapped_policy_disallows_network() {
     let policy = airgapped_policy();
-    assert!(!policy.allow_network, "airgapped policy must disable network");
+    assert!(
+        !policy.allow_network,
+        "airgapped policy must disable network"
+    );
 }
 
 #[test]
@@ -371,7 +381,10 @@ fn test_policy_digest_is_deterministic() {
 fn test_all_policies_validate() {
     let policies = [
         ("default", include_str!("../policies/default.yaml")),
-        ("contractor_strict", include_str!("../policies/contractor_strict.yaml")),
+        (
+            "contractor_strict",
+            include_str!("../policies/contractor_strict.yaml"),
+        ),
         ("airgapped", include_str!("../policies/airgapped.yaml")),
         ("ci_gate", include_str!("../policies/ci_gate.yaml")),
     ];

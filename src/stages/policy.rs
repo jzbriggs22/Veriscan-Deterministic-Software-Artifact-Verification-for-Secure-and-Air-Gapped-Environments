@@ -46,10 +46,7 @@ pub fn evaluate(results: &PipelineResults, policy: &Policy) -> Result<PolicyResu
 
     // 1. Malware detection is always fatal.
     if let MalwareResult::Detected { ref detections, .. } = results.malware_status {
-        let reason = format!(
-            "Malware detected by scanner: {}",
-            detections.join(", ")
-        );
+        let reason = format!("Malware detected by scanner: {}", detections.join(", "));
         warn!(reason = %reason, "MANDATORY FAIL: malware detected");
         trace.push(TraceEntry {
             rule_description: "[MANDATORY] Malware detected".to_string(),
@@ -144,9 +141,27 @@ pub fn evaluate(results: &PipelineResults, policy: &Policy) -> Result<PolicyResu
     }
 
     // ── Policy-level checks (not in decision matrix) ────────────────────────
-    check_signature_policy(results, policy, &mut trace, &mut final_verdict, &mut failing_reasons);
-    check_file_type_policy(results, policy, &mut trace, &mut final_verdict, &mut failing_reasons);
-    check_executable_policy(results, policy, &mut trace, &mut final_verdict, &mut failing_reasons);
+    check_signature_policy(
+        results,
+        policy,
+        &mut trace,
+        &mut final_verdict,
+        &mut failing_reasons,
+    );
+    check_file_type_policy(
+        results,
+        policy,
+        &mut trace,
+        &mut final_verdict,
+        &mut failing_reasons,
+    );
+    check_executable_policy(
+        results,
+        policy,
+        &mut trace,
+        &mut final_verdict,
+        &mut failing_reasons,
+    );
     check_malware_availability_policy(results, policy, &mut trace, &mut final_verdict);
     check_reputation_availability_policy(results, policy, &mut trace, &mut final_verdict);
     check_sbom_policy(results, policy, &mut trace, &mut final_verdict);
@@ -189,12 +204,10 @@ fn evaluate_condition(
                 || results.expected_sha512_matched == Some(false)
         }
         RuleCondition::HighEntropy => results.inspection.entropy_flagged,
-        RuleCondition::DeniedFileType => {
-            policy
-                .deny_file_types
-                .iter()
-                .any(|denied| results.file_type.contains(denied.as_str()))
-        }
+        RuleCondition::DeniedFileType => policy
+            .deny_file_types
+            .iter()
+            .any(|denied| results.file_type.contains(denied.as_str())),
         RuleCondition::ReputationMalicious => {
             matches!(results.reputation, ReputationResult::Malicious { .. })
         }
@@ -274,10 +287,7 @@ fn check_signature_policy(
             }
         }
         SignatureResult::SignerNotAllowed { fingerprint } => {
-            let reason = format!(
-                "Signer '{}' not in allow list",
-                fingerprint
-            );
+            let reason = format!("Signer '{}' not in allow list", fingerprint);
             trace.push(TraceEntry {
                 rule_description: reason.clone(),
                 condition: "SignatureRequired".to_string(),
@@ -385,10 +395,7 @@ fn check_executable_policy(
         }
         ExecutableHandling::BlockUnsigned => {
             // Block unsigned executables only.
-            let is_signed = matches!(
-                results.signature_status,
-                SignatureResult::Verified { .. }
-            );
+            let is_signed = matches!(results.signature_status, SignatureResult::Verified { .. });
             if !is_signed {
                 let reason = format!(
                     "Unsigned executable '{}' blocked by policy (executable_handling=block_unsigned)",
@@ -409,7 +416,8 @@ fn check_executable_policy(
                 }
             } else {
                 trace.push(TraceEntry {
-                    rule_description: "Signed executable allowed (block_unsigned policy)".to_string(),
+                    rule_description: "Signed executable allowed (block_unsigned policy)"
+                        .to_string(),
                     condition: "ExecutableHandling".to_string(),
                     matched: true,
                     verdict: None,
@@ -430,7 +438,9 @@ fn check_malware_availability_policy(
     }
     let is_unavailable = matches!(
         results.malware_status,
-        MalwareResult::ToolMissing { .. } | MalwareResult::ScanError { .. } | MalwareResult::NotChecked
+        MalwareResult::ToolMissing { .. }
+            | MalwareResult::ScanError { .. }
+            | MalwareResult::NotChecked
     );
     if is_unavailable {
         let reason = "Malware scan required by policy but scanner unavailable".to_string();
@@ -438,12 +448,14 @@ fn check_malware_availability_policy(
             rule_description: reason.clone(),
             condition: "MalwareScanRequired".to_string(),
             matched: true,
-            verdict: Some(if policy.malware_failure_is_fatal {
-                "Failed"
-            } else {
-                "Unverified"
-            }
-            .to_string()),
+            verdict: Some(
+                if policy.malware_failure_is_fatal {
+                    "Failed"
+                } else {
+                    "Unverified"
+                }
+                .to_string(),
+            ),
         });
         if final_verdict.is_none() {
             *final_verdict = Some(if policy.malware_failure_is_fatal {
@@ -483,12 +495,14 @@ fn check_reputation_availability_policy(
             rule_description: reason.clone(),
             condition: "ReputationRequired".to_string(),
             matched: true,
-            verdict: Some(if policy.reputation_failure_is_fatal {
-                "Failed"
-            } else {
-                "Unverified"
-            }
-            .to_string()),
+            verdict: Some(
+                if policy.reputation_failure_is_fatal {
+                    "Failed"
+                } else {
+                    "Unverified"
+                }
+                .to_string(),
+            ),
         });
         if final_verdict.is_none() {
             *final_verdict = Some(if policy.reputation_failure_is_fatal {

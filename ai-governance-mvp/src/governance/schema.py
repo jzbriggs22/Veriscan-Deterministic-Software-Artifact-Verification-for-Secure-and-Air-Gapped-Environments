@@ -205,23 +205,3 @@ class NormalMetrics:
     uptime_pct: float = 99.9
 
 
-@dataclass
-class GovernanceReport:
-    """Full point-in-time governance report for the PM dashboard."""
-    report_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    timestamp: datetime = field(default_factory=datetime.utcnow)
-    overall_status: GovernanceStatus = GovernanceStatus.HEALTHY
-    normal_metrics: Optional[NormalMetrics] = None
-    drift_results: list[DriftResult] = field(default_factory=list)
-    active_alerts: list[DriftAlert] = field(default_factory=list)
-    rollback_events: list[RollbackEvent] = field(default_factory=list)
-    rollback_recommended: bool = False
-    rollback_reason: str = ""
-
-    @property
-    def has_critical_drift(self) -> bool:
-        return any(r.drift_score >= 0.7 for r in self.drift_results if r.is_high_risk)
-
-    @property
-    def has_active_rollback(self) -> bool:
-        return any(e.is_active for e in self.rollback_events)

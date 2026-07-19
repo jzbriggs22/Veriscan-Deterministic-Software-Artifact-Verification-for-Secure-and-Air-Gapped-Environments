@@ -1,94 +1,10 @@
-/// Filesystem utilities with security hardening.
+/// Filesystem utilities: hashing and atomic writes.
 ///
-/// All path operations normalize and validate to prevent directory traversal.
-/// No operation blindly trusts user-supplied path components.
+/// Bundle-relative path validation (traversal rejection + containment) lives
+/// in `stages::bundle::safe_bundle_path`, next to its only consumer.
 use crate::error::VeriError;
 use sha2::{Digest, Sha256};
-use std::path::{Component, Path, PathBuf};
-
-/// Canonicalize `path` and reject any traversal attempt (e.g., `../../../etc/passwd`).
-///
-/// Returns the absolute, normalised path only if it stays within `base`.
-/// If `base` is None, just normalise without confinement check.
-pub fn safe_path(path: &Path, base: Option<&Path>) -> Result<PathBuf, VeriError> {
-    let mut normalised = PathBuf::new();
-    for component in path.components() {
-        match component {
-            Component::ParentDir => {
-                // A `..` component in any user-supplied path is a traversal attempt.
-                return Err(VeriError::PathTraversal {
-                    path: path.display().to_string(),
-                });
-            }
-            Component::CurDir => {} // skip `.`
-            Component::Prefix(p) => normalised.push(p.as_os_str()),
-            Component::RootDir => normalised.push("/"),
-            Component::Normal(n) => normalised.push(n),
-        }
-    }
-
-    if let Some(base) = base {
-        // Require base to canonicalize — a non-existent base is an error, not a
-        // fallback, because falling back to the raw path would defeat the check.
-        let base_abs = base.canonicalize().map_err(|e| VeriError::Io {
-            path: base.display().to_string(),
-            source: e,
-        })?;
-
-        let joined = base_abs.join(&normalised);
-
-        // Canonicalize the joined path.  When the target does not yet exist,
-        // walk up to the nearest existing ancestor, canonicalize that, then
-        // re-append the remaining (non-existent) components so that symlinks
-        // in the existing portion are still resolved.
-        let resolved = if joined.exists() {
-            joined.canonicalize().map_err(|e| VeriError::Io {
-                path: joined.display().to_string(),
-                source: e,
-            })?
-        } else {
-            let mut candidate = joined.clone();
-            let mut suffix: Vec<std::ffi::OsString> = Vec::new();
-            loop {
-                if candidate.exists() {
-                    break;
-                }
-                match candidate.file_name() {
-                    Some(name) => suffix.push(name.to_os_string()),
-                    None => break,
-                }
-                match candidate.parent() {
-                    Some(p) => candidate = p.to_path_buf(),
-                    None => break,
-                }
-            }
-            let canon_ancestor = candidate.canonicalize().map_err(|e| VeriError::Io {
-                path: candidate.display().to_string(),
-                source: e,
-            })?;
-            suffix.reverse();
-            suffix.iter().fold(canon_ancestor, |acc, c| acc.join(c))
-        };
-
-        if !resolved.starts_with(&base_abs) {
-            return Err(VeriError::PathTraversal {
-                path: path.display().to_string(),
-            });
-        }
-
-        Ok(resolved)
-    } else {
-        Ok(normalised)
-    }
-}
-
-/// Read file bytes into memory, failing with a typed error on any I/O issue.
-pub fn read_bytes(path: &Path) -> Result<Vec<u8>, VeriError> {
-    std::fs::read(path).map_err(|e| VeriError::Io {
-        path: path.display().to_string(),
-        source: e,
-    })
-}
+use std::path::Path;
 
 /// Compute SHA-256 of a file on disk without reading the whole thing into RAM at once.
 /// Reads in 64 KiB chunks.

@@ -13,13 +13,12 @@ use std::path::PathBuf;
 use std::process;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
+use uuid::Uuid;
 use veriscan_lib::{
     config::{Policy, RunConfig},
-    orchestrator,
-    report,
+    orchestrator, report,
     stages::bundle,
 };
-use uuid::Uuid;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -226,7 +225,10 @@ async fn run(cli: Cli) -> i32 {
             if let Some(reason) = &json_report.verdict.reason {
                 println!("Reason: {}\n", reason);
             }
-            println!("SHA-256: {}", json_report.hashes.sha256.as_deref().unwrap_or("N/A"));
+            println!(
+                "SHA-256: {}",
+                json_report.hashes.sha256.as_deref().unwrap_or("N/A")
+            );
             println!("Signature: {}", json_report.signature.status);
             println!("Malware scan: {}", json_report.malware_scan.status);
             println!("Reputation: {}", json_report.reputation.status);

@@ -10,7 +10,6 @@ version: "1.0"
 
 # Signature: mandatory
 require_signature: true
-allow_unsigned: false
 
 # Network: permitted (for reputation)
 allow_network: true

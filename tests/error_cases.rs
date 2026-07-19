@@ -10,11 +10,7 @@ use veriscan_lib::{
     config::Policy,
     error::VeriError,
     stages::acquire,
-    util::{
-        command::run_safe,
-        fs::safe_path,
-        net::check_url_allowed,
-    },
+    util::{command::run_safe, net::check_url_allowed},
 };
 
 fn default_policy() -> Policy {
@@ -128,8 +124,11 @@ fn test_check_url_allowed_passes_clean_url() {
         "pastebin.com".to_string(),
     ];
 
-    check_url_allowed("https://releases.example.com/v1.0.0/artifact.tar.gz", &denylist)
-        .expect("Clean URL must be allowed");
+    check_url_allowed(
+        "https://releases.example.com/v1.0.0/artifact.tar.gz",
+        &denylist,
+    )
+    .expect("Clean URL must be allowed");
 }
 
 #[test]
@@ -177,88 +176,12 @@ async fn test_run_safe_absolute_nonexistent_returns_io_error() {
 
     // Absolute path that doesn't exist → Io error from spawn, not our guard.
     let result = run_safe(Path::new("/nonexistent/binary_xyz987"), &[], 5, 4096).await;
-    assert!(
-        result.is_err(),
-        "Nonexistent binary must produce an error"
-    );
+    assert!(result.is_err(), "Nonexistent binary must produce an error");
     // Passes the absolute-path guard, fails at spawn → Io error
     assert!(
         matches!(result.unwrap_err(), VeriError::Io { .. }),
         "Should be an Io error from the spawn attempt"
     );
-}
-
-// ── safe_path traversal rejection ────────────────────────────────────────────
-
-#[test]
-fn test_safe_path_rejects_parent_component() {
-    use std::path::Path;
-
-    let err = safe_path(Path::new("../etc/passwd"), None)
-        .expect_err(".. must be rejected");
-
-    assert!(
-        matches!(err, VeriError::PathTraversal { .. }),
-        "Expected PathTraversal, got: {}",
-        err
-    );
-    assert_eq!(err.code(), "ERR_PATH_TRAVERSAL");
-}
-
-#[test]
-fn test_safe_path_rejects_embedded_traversal() {
-    use std::path::Path;
-
-    let err = safe_path(Path::new("subdir/../../etc/passwd"), None)
-        .expect_err("embedded .. must be rejected");
-
-    assert!(matches!(err, VeriError::PathTraversal { .. }));
-}
-
-#[test]
-fn test_safe_path_rejects_absolute_traversal_via_base() {
-    use std::path::Path;
-    use tempfile::TempDir;
-
-    let base = TempDir::new().expect("tempdir");
-
-    // A path that after joining would escape base via .. segments.
-    let err = safe_path(Path::new("../outside_base"), Some(base.path()))
-        .expect_err("Traversal out of base must be rejected");
-
-    assert!(
-        matches!(err, VeriError::PathTraversal { .. }),
-        "Expected PathTraversal, got: {}",
-        err
-    );
-}
-
-#[test]
-fn test_safe_path_allows_valid_relative_path() {
-    use std::path::Path;
-
-    // Without a base, a plain relative path (no ..) should be normalised and returned.
-    let result = safe_path(Path::new("subdir/artifact.bin"), None)
-        .expect("Valid relative path must succeed");
-
-    assert!(result.ends_with("subdir/artifact.bin"));
-}
-
-#[test]
-fn test_safe_path_allows_child_within_base() {
-    use std::path::Path;
-    use tempfile::TempDir;
-
-    let base = TempDir::new().expect("tempdir");
-    // Create the target file so canonicalization succeeds.
-    let child = base.path().join("artifact.bin");
-    std::fs::write(&child, b"data").expect("write");
-
-    let result = safe_path(Path::new("artifact.bin"), Some(base.path()))
-        .expect("Child within base must be allowed");
-
-    assert!(result.starts_with(base.path()), "Result must be under base");
-    assert!(result.ends_with("artifact.bin"));
 }
 
 // ── Error code stability ──────────────────────────────────────────────────────
@@ -268,36 +191,90 @@ fn test_error_codes_are_stable_and_non_empty() {
     use std::io;
 
     let cases: Vec<(&str, VeriError)> = vec![
-        ("ERR_IO", VeriError::Io {
-            path: "/tmp/x".to_string(),
-            source: io::Error::new(io::ErrorKind::NotFound, "not found"),
-        }),
-        ("ERR_PATH_TRAVERSAL", VeriError::PathTraversal { path: "../x".to_string() }),
-        ("ERR_ARTIFACT_NOT_FOUND", VeriError::ArtifactNotFound { path: "/tmp/nope".to_string() }),
+        (
+            "ERR_IO",
+            VeriError::Io {
+                path: "/tmp/x".to_string(),
+                source: io::Error::new(io::ErrorKind::NotFound, "not found"),
+            },
+        ),
+        (
+            "ERR_PATH_TRAVERSAL",
+            VeriError::PathTraversal {
+                path: "../x".to_string(),
+            },
+        ),
+        (
+            "ERR_ARTIFACT_NOT_FOUND",
+            VeriError::ArtifactNotFound {
+                path: "/tmp/nope".to_string(),
+            },
+        ),
         ("ERR_NETWORK_POLICY", VeriError::NetworkDeniedByPolicy),
-        ("ERR_URL_DENIED", VeriError::UrlDenied { url: "https://bad.com".to_string() }),
-        ("ERR_HASH_MISMATCH", VeriError::HashMismatch {
-            expected: "abc".to_string(),
-            actual: "def".to_string(),
-        }),
-        ("ERR_ARTIFACT_MUTATED", VeriError::ArtifactMutated {
-            before: "aaa".to_string(),
-            after: "bbb".to_string(),
-        }),
-        ("ERR_SIG_INVALID", VeriError::SignatureInvalid { reason: "bad".to_string() }),
-        ("ERR_SIG_MISSING", VeriError::SignatureMissing),
-        ("ERR_SIGNER_NOT_ALLOWED", VeriError::SignerNotAllowed { fingerprint: "DEAD".to_string() }),
-        ("ERR_KEY_PARSE", VeriError::KeyParseError { reason: "bad key".to_string() }),
-        ("ERR_BUNDLE_FILE_MISMATCH", VeriError::BundleFileMismatch {
-            file: "x".to_string(),
-            expected: "a".to_string(),
-            actual: "b".to_string(),
-        }),
-        ("ERR_BUNDLE_FILE_MISSING", VeriError::BundleFileMissing { file: "x".to_string() }),
-        ("ERR_BUNDLE_NOT_FOUND", VeriError::BundleNotFound { path: "/tmp/b".to_string() }),
-        ("ERR_MANIFEST_PARSE", VeriError::ManifestParseError { reason: "parse fail".to_string() }),
-        ("ERR_SUBPROCESS_PATH", VeriError::SubprocessPathNotAbsolute { path: "rel".to_string() }),
-        ("ERR_FILE_TYPE_DENIED", VeriError::DeniedFileType { file_type: "ELF".to_string() }),
+        (
+            "ERR_URL_DENIED",
+            VeriError::UrlDenied {
+                url: "https://bad.com".to_string(),
+            },
+        ),
+        (
+            "ERR_HASH_MISMATCH",
+            VeriError::HashMismatch {
+                expected: "abc".to_string(),
+                actual: "def".to_string(),
+            },
+        ),
+        (
+            "ERR_ARTIFACT_MUTATED",
+            VeriError::ArtifactMutated {
+                before: "aaa".to_string(),
+                after: "bbb".to_string(),
+            },
+        ),
+        (
+            "ERR_SIG_INVALID",
+            VeriError::SignatureInvalid {
+                reason: "bad".to_string(),
+            },
+        ),
+        (
+            "ERR_KEY_PARSE",
+            VeriError::KeyParseError {
+                reason: "bad key".to_string(),
+            },
+        ),
+        (
+            "ERR_BUNDLE_FILE_MISMATCH",
+            VeriError::BundleFileMismatch {
+                file: "x".to_string(),
+                expected: "a".to_string(),
+                actual: "b".to_string(),
+            },
+        ),
+        (
+            "ERR_BUNDLE_FILE_MISSING",
+            VeriError::BundleFileMissing {
+                file: "x".to_string(),
+            },
+        ),
+        (
+            "ERR_BUNDLE_NOT_FOUND",
+            VeriError::BundleNotFound {
+                path: "/tmp/b".to_string(),
+            },
+        ),
+        (
+            "ERR_MANIFEST_PARSE",
+            VeriError::ManifestParseError {
+                reason: "parse fail".to_string(),
+            },
+        ),
+        (
+            "ERR_SUBPROCESS_PATH",
+            VeriError::SubprocessPathNotAbsolute {
+                path: "rel".to_string(),
+            },
+        ),
         ("ERR_INTERNAL", VeriError::Internal("oops".to_string())),
     ];
 

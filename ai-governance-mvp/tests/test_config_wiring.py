@@ -231,3 +231,41 @@ class TestServeWiresEventBroker:
         assert broker.published_total >= 1, (
             "a wired scheduler must publish cycle_complete on every cycle"
         )
+
+
+# ── webhook severity filter ranks info below warning ──────────────────────────
+
+class TestWebhookSeverityRanking:
+    def test_info_alert_filtered_by_warning_min_severity(self):
+        """An INFO alert must NOT be dispatched through a min_severity='warning'
+        webhook — previously info was unranked and tied with warning."""
+        from unittest.mock import patch
+
+        from src.engine.webhooks import WebhookConfig, WebhookDispatcher
+        from src.governance.schema import AlertSeverity, CaseCategory, DriftAlert
+
+        dispatcher = WebhookDispatcher(
+            configs=[WebhookConfig(url="http://localhost:19999/webhook", min_severity="warning")]
+        )
+        info_alert = DriftAlert(
+            category=CaseCategory.ROUTINE,
+            severity=AlertSeverity.INFO,
+            message="informational only",
+            drift_score=0.1,
+        )
+        with patch("src.engine.webhooks.urlopen") as mock_urlopen:
+            result = dispatcher.dispatch_alert(info_alert)
+        mock_urlopen.assert_not_called()
+        assert result == {}
+
+    def test_severity_ordering_is_info_warning_critical(self):
+        from src.engine.webhooks import WebhookDispatcher
+
+        m = WebhookDispatcher._severity_matches
+        assert not m("info", "warning")
+        assert not m("info", "critical")
+        assert m("warning", "warning")
+        assert not m("warning", "critical")
+        assert m("critical", "warning")
+        assert m("critical", "critical")
+        assert m("info", "info")

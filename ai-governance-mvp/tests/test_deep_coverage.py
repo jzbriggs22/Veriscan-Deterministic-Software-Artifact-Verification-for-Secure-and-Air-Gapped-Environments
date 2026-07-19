@@ -31,7 +31,6 @@ from src.governance.schema import (
     DecisionOutcome,
     DriftAlert,
     DriftResult,
-    GovernanceReport,
     GovernanceStatus,
     RollbackEvent,
 )
@@ -95,7 +94,7 @@ class TestSchemaValidationErrors:
 
 
 class TestSchemaProperties:
-    """Cover DriftAlert.is_active (line 167), GovernanceReport properties (217, 221)."""
+    """Cover DriftAlert.is_active."""
 
     def test_drift_alert_is_active_false_when_acknowledged(self):
         alert = DriftAlert(
@@ -107,45 +106,6 @@ class TestSchemaProperties:
         alert.acknowledged_at = datetime.utcnow()
         assert not alert.is_active
 
-    def test_governance_report_has_critical_drift_true(self):
-        result = DriftResult(
-            category=CaseCategory.BILLING_DISPUTE,  # high-risk
-            drift_score=0.85,
-            insufficient_data=False,
-        )
-        report = GovernanceReport(drift_results=[result])
-        assert report.has_critical_drift
-
-    def test_governance_report_has_critical_drift_false_routine(self):
-        # ROUTINE is not high-risk — should not trigger has_critical_drift
-        result = DriftResult(
-            category=CaseCategory.ROUTINE,
-            drift_score=0.9,
-            insufficient_data=False,
-        )
-        report = GovernanceReport(drift_results=[result])
-        assert not report.has_critical_drift
-
-    def test_governance_report_has_critical_drift_false_score_low(self):
-        result = DriftResult(
-            category=CaseCategory.BILLING_DISPUTE,
-            drift_score=0.5,  # below 0.7
-            insufficient_data=False,
-        )
-        report = GovernanceReport(drift_results=[result])
-        assert not report.has_critical_drift
-
-    def test_governance_report_has_active_rollback_true(self):
-        event = RollbackEvent(reason="Test", triggered_by="ci", drift_score=0.9)
-        assert event.is_active  # default
-        report = GovernanceReport(rollback_events=[event])
-        assert report.has_active_rollback
-
-    def test_governance_report_has_active_rollback_false_resolved(self):
-        event = RollbackEvent(reason="Resolved", triggered_by="ci", drift_score=0.9)
-        event.resolved_at = datetime.utcnow()  # makes is_active return False
-        report = GovernanceReport(rollback_events=[event])
-        assert not report.has_active_rollback
 
 
 # ── src/api/app.py — dependency injection 503 paths ──────────────────────────

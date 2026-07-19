@@ -116,7 +116,7 @@ class WebhookDispatcher:
 
     @staticmethod
     def _severity_matches(alert_severity: str, min_severity: str) -> bool:
-        order = {"warning": 0, "critical": 1}
+        order = {"info": 0, "warning": 1, "critical": 2}
         return order.get(alert_severity, 0) >= order.get(min_severity, 0)
 
     def _send(self, cfg: WebhookConfig, payload: dict) -> bool:

@@ -11,33 +11,3 @@ pub mod malware;
 pub mod policy;
 pub mod reputation;
 pub mod signature;
-
-use crate::evidence::EvidenceItem;
-
-/// Trait all verification stages must implement.
-pub trait Stage {
-    /// The stage's canonical name, used in evidence and logs.
-    fn name(&self) -> &'static str;
-}
-
-/// A stage result carries evidence and a stage-specific payload.
-#[derive(Debug)]
-pub struct StageEvidence {
-    pub items: Vec<EvidenceItem>,
-}
-
-impl StageEvidence {
-    pub fn new() -> Self {
-        StageEvidence { items: Vec::new() }
-    }
-
-    pub fn push(&mut self, item: EvidenceItem) {
-        self.items.push(item);
-    }
-}
-
-impl Default for StageEvidence {
-    fn default() -> Self {
-        Self::new()
-    }
-}

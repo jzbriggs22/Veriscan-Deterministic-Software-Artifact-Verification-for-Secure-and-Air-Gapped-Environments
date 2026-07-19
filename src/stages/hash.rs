@@ -106,16 +106,10 @@ pub async fn run(
         serde_json::Value::String(sha512.clone()),
     );
     if let Some(m) = sha256_matched {
-        outputs.insert(
-            "sha256_matched".to_string(),
-            serde_json::Value::Bool(m),
-        );
+        outputs.insert("sha256_matched".to_string(), serde_json::Value::Bool(m));
     }
     if let Some(m) = sha512_matched {
-        outputs.insert(
-            "sha512_matched".to_string(),
-            serde_json::Value::Bool(m),
-        );
+        outputs.insert("sha512_matched".to_string(), serde_json::Value::Bool(m));
     }
 
     let evidence = EvidenceItem::new("hash", inputs, outputs, HashMap::new());

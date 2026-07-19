@@ -9,7 +9,6 @@ version: "1.0"
 
 # Signature
 require_signature: false
-allow_unsigned: true
 
 # Network
 allow_network: true

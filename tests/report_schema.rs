@@ -7,6 +7,7 @@
 /// - Evidence items have required fields.
 /// - Deterministic IDs are 64-char hex strings.
 use chrono::Utc;
+use std::collections::HashMap;
 use veriscan_lib::{
     config::Policy,
     evidence::{
@@ -16,7 +17,6 @@ use veriscan_lib::{
     report::{build_json_report, render_markdown, JsonReport},
     stages::policy::TraceEntry,
 };
-use std::collections::HashMap;
 
 fn default_policy() -> Policy {
     Policy::default_policy().expect("default policy")
@@ -79,9 +79,7 @@ fn sample_evidence() -> Vec<EvidenceItem> {
     inputs.insert("artifact_path".to_string(), "/tmp/test.bin".to_string());
     let mut outputs = HashMap::new();
     outputs.insert("sha256".to_string(), serde_json::json!("a".repeat(64)));
-    vec![
-        EvidenceItem::new("hash", inputs, outputs, HashMap::new()),
-    ]
+    vec![EvidenceItem::new("hash", inputs, outputs, HashMap::new())]
 }
 
 fn build_test_report(status: VerificationStatus) -> JsonReport {
@@ -259,7 +257,10 @@ fn test_markdown_report_rendered_without_panic() {
     assert!(md.contains("VERIFIED"), "Markdown must contain verdict");
     assert!(md.contains("SHA-256"), "Markdown must mention SHA-256");
     assert!(md.contains("Signature"), "Markdown must mention Signature");
-    assert!(md.contains("Decision Trace"), "Markdown must contain decision trace");
+    assert!(
+        md.contains("Decision Trace"),
+        "Markdown must contain decision trace"
+    );
 }
 
 #[test]
@@ -282,7 +283,11 @@ fn test_report_policy_digest_consistent() {
         r1.policy.digest, r2.policy.digest,
         "Policy digest must be deterministic"
     );
-    assert_eq!(r1.policy.digest.len(), 64, "Policy digest must be 64-char hex");
+    assert_eq!(
+        r1.policy.digest.len(),
+        64,
+        "Policy digest must be 64-char hex"
+    );
 }
 
 #[test]
@@ -317,10 +322,19 @@ fn test_report_contains_no_sensitive_fields() {
     let json = serde_json::to_string_pretty(&report).expect("serialise");
 
     // API keys must never appear in reports.
-    assert!(!json.contains("api_key"), "API key must not appear in report JSON");
-    assert!(!json.contains("VT_API_KEY"), "VT env var value must not appear in report");
+    assert!(
+        !json.contains("api_key"),
+        "API key must not appear in report JSON"
+    );
+    assert!(
+        !json.contains("VT_API_KEY"),
+        "VT env var value must not appear in report"
+    );
     // Passwords, tokens, etc.
-    assert!(!json.contains("password"), "Password must not appear in report");
+    assert!(
+        !json.contains("password"),
+        "Password must not appear in report"
+    );
     assert!(!json.contains("secret"), "Secret must not appear in report");
 }
 

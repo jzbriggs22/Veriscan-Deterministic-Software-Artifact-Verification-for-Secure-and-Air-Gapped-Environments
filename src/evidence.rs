@@ -143,7 +143,12 @@ impl EvidenceBuilder {
     }
 
     pub fn build(self) -> EvidenceItem {
-        EvidenceItem::new(self.stage_name, self.inputs, self.outputs, self.tool_versions)
+        EvidenceItem::new(
+            self.stage_name,
+            self.inputs,
+            self.outputs,
+            self.tool_versions,
+        )
     }
 }
 

@@ -321,8 +321,7 @@ fn find_indicators(strings: &[String]) -> Vec<String> {
         "LD_PRELOAD",
     ];
     // Base64 blob heuristic: 64+ chars of base64 alphabet with optional padding.
-    let b64_re =
-        Regex::new(r"[A-Za-z0-9+/]{64,}={0,2}").expect("base64 regex");
+    let b64_re = Regex::new(r"[A-Za-z0-9+/]{64,}={0,2}").expect("base64 regex");
 
     let mut found_urls = std::collections::HashSet::new();
     let mut found_ps = std::collections::HashSet::new();
@@ -394,10 +393,7 @@ fn build_evidence(
         "file_type".to_string(),
         serde_json::Value::String(file_type.to_string()),
     );
-    outputs.insert(
-        "entropy".to_string(),
-        serde_json::json!(entropy),
-    );
+    outputs.insert("entropy".to_string(), serde_json::json!(entropy));
     outputs.insert(
         "entropy_flagged".to_string(),
         serde_json::Value::Bool(entropy_flagged),

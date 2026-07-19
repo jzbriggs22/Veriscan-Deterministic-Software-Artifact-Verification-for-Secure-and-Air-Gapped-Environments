@@ -21,8 +21,8 @@
 /// No file is trusted until the manifest signature passes.
 use crate::error::VeriError;
 use crate::util::fs::sha256_file;
-use serde::{Deserialize, Serialize};
 use sequoia_openpgp::parse::Parse;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256, Sha512};
 use std::path::{Path, PathBuf};
 use tracing::{info, warn};
@@ -84,22 +84,28 @@ pub async fn create(
     // Compute hashes.
     let sha256 = compute_sha256_str(&dest_artifact)?;
     let sha512 = compute_sha512_str(&dest_artifact)?;
-    std::fs::write(out_dir.join(format!("{}.sha256", artifact_filename)), &sha256)
-        .map_err(|e| VeriError::Io {
-            path: out_dir
-                .join(format!("{}.sha256", artifact_filename))
-                .display()
-                .to_string(),
-            source: e,
-        })?;
-    std::fs::write(out_dir.join(format!("{}.sha512", artifact_filename)), &sha512)
-        .map_err(|e| VeriError::Io {
-            path: out_dir
-                .join(format!("{}.sha512", artifact_filename))
-                .display()
-                .to_string(),
-            source: e,
-        })?;
+    std::fs::write(
+        out_dir.join(format!("{}.sha256", artifact_filename)),
+        &sha256,
+    )
+    .map_err(|e| VeriError::Io {
+        path: out_dir
+            .join(format!("{}.sha256", artifact_filename))
+            .display()
+            .to_string(),
+        source: e,
+    })?;
+    std::fs::write(
+        out_dir.join(format!("{}.sha512", artifact_filename)),
+        &sha512,
+    )
+    .map_err(|e| VeriError::Io {
+        path: out_dir
+            .join(format!("{}.sha512", artifact_filename))
+            .display()
+            .to_string(),
+        source: e,
+    })?;
 
     // Copy public keys from keys_dir to trusted_keys/.
     // Scan each candidate file for private-key markers before copying;
@@ -134,9 +140,7 @@ pub async fn create(
                     );
                     continue;
                 }
-                let dest = out_dir
-                    .join("trusted_keys")
-                    .join(p.file_name().unwrap());
+                let dest = out_dir.join("trusted_keys").join(p.file_name().unwrap());
                 std::fs::copy(p, &dest).map_err(|e| VeriError::Io {
                     path: p.display().to_string(),
                     source: e,
@@ -340,9 +344,7 @@ fn safe_bundle_path(base: &Path, relative: &str) -> Result<PathBuf, VeriError> {
     Ok(resolved)
 }
 
-fn load_bundle_keys(
-    keys_dir: &Path,
-) -> Result<Vec<sequoia_openpgp::Cert>, VeriError> {
+fn load_bundle_keys(keys_dir: &Path) -> Result<Vec<sequoia_openpgp::Cert>, VeriError> {
     let mut certs = Vec::new();
     if !keys_dir.is_dir() {
         return Ok(certs);
@@ -399,9 +401,10 @@ fn sign_artifact_with_sequoia(
         path: key_path.display().to_string(),
         source: e,
     })?;
-    let cert = sequoia_openpgp::Cert::from_bytes(&key_bytes).map_err(|e| VeriError::KeyParseError {
-        reason: e.to_string(),
-    })?;
+    let cert =
+        sequoia_openpgp::Cert::from_bytes(&key_bytes).map_err(|e| VeriError::KeyParseError {
+            reason: e.to_string(),
+        })?;
 
     let policy = StandardPolicy::new();
 
@@ -441,7 +444,9 @@ fn sign_artifact_with_sequoia(
             path: data_path.display().to_string(),
             source: e,
         })?;
-        signer.finalize().map_err(|e| VeriError::Internal(format!("Failed to finalize signature: {}", e)))?;
+        signer
+            .finalize()
+            .map_err(|e| VeriError::Internal(format!("Failed to finalize signature: {}", e)))?;
     }
 
     std::fs::write(sig_path, &sig_output).map_err(|e| VeriError::Io {
@@ -472,7 +477,10 @@ fn verify_sig_with_certs(
     }
 
     impl VerificationHelper for Helper {
-        fn get_certs(&mut self, ids: &[KeyHandle]) -> sequoia_openpgp::Result<Vec<sequoia_openpgp::Cert>> {
+        fn get_certs(
+            &mut self,
+            ids: &[KeyHandle],
+        ) -> sequoia_openpgp::Result<Vec<sequoia_openpgp::Cert>> {
             Ok(self
                 .certs
                 .iter()
@@ -497,7 +505,9 @@ fn verify_sig_with_certs(
             if self.found_good {
                 Ok(())
             } else {
-                Err(anyhow::anyhow!("No valid signatures found in bundle manifest"))
+                Err(anyhow::anyhow!(
+                    "No valid signatures found in bundle manifest"
+                ))
             }
         }
     }
@@ -515,11 +525,11 @@ fn verify_sig_with_certs(
         .map_err(|e| VeriError::ManifestSignatureInvalid {
             reason: format!("Policy error: {}", e),
         })?;
-    verifier.verify_bytes(data).map_err(|e| {
-        VeriError::ManifestSignatureInvalid {
+    verifier
+        .verify_bytes(data)
+        .map_err(|e| VeriError::ManifestSignatureInvalid {
             reason: format!("Verification failed: {}", e),
-        }
-    })?;
+        })?;
     Ok(())
 }
 

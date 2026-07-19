@@ -18,53 +18,6 @@ pub fn build_client(timeout_secs: u64) -> Result<reqwest::Client, VeriError> {
         .map_err(VeriError::Network)
 }
 
-/// Download a URL to bytes; returns the body as a Vec<u8>.
-///
-/// Does not follow more than 3 redirects. Enforces a size cap to prevent
-/// memory exhaustion from unexpectedly large responses.
-pub async fn download_bytes(
-    client: &reqwest::Client,
-    url: &str,
-    max_bytes: usize,
-) -> Result<Vec<u8>, VeriError> {
-    let response = client
-        .get(url)
-        .send()
-        .await
-        .map_err(VeriError::Network)?;
-
-    let status = response.status();
-    if !status.is_success() {
-        return Err(VeriError::VtApiError {
-            status: status.as_u16(),
-            body: format!("HTTP {} from {}", status, url),
-        });
-    }
-
-    // Use content_length hint if available, capped at max_bytes.
-    let mut body = Vec::with_capacity(
-        response
-            .content_length()
-            .unwrap_or(0)
-            .min(max_bytes as u64) as usize,
-    );
-
-    let mut stream = response.bytes_stream();
-    use futures_util::StreamExt;
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(VeriError::Network)?;
-        if body.len() + chunk.len() > max_bytes {
-            return Err(VeriError::Internal(format!(
-                "Download from '{}' exceeded max size of {} bytes",
-                url, max_bytes
-            )));
-        }
-        body.extend_from_slice(&chunk);
-    }
-
-    Ok(body)
-}
-
 /// Validate a URL against the policy denylist.
 pub fn check_url_allowed(url: &str, denylist: &[String]) -> Result<(), VeriError> {
     for pattern in denylist {
