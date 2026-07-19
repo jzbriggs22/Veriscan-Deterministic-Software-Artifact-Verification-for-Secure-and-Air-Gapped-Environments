@@ -8,7 +8,6 @@ use std::io::Write;
 use tempfile::NamedTempFile;
 use veriscan_lib::{
     config::Policy,
-    evidence::VerificationStatus,
     stages::{hash, inspect, malware},
 };
 
@@ -22,18 +21,6 @@ fn temp_artifact(contents: &[u8]) -> NamedTempFile {
 /// Helper: load the default policy.
 fn default_policy() -> Policy {
     Policy::default_policy().expect("default policy")
-}
-
-/// Helper: load the airgapped policy (no network, strict).
-fn airgapped_policy() -> Policy {
-    let yaml = include_str!("../policies/airgapped.yaml");
-    serde_yaml::from_str(yaml).expect("parse airgapped policy")
-}
-
-/// Helper: load the contractor_strict policy.
-fn strict_policy() -> Policy {
-    let yaml = include_str!("../policies/contractor_strict.yaml");
-    serde_yaml::from_str(yaml).expect("parse contractor_strict policy")
 }
 
 #[tokio::test]
@@ -235,8 +222,6 @@ async fn test_entropy_computation_uniform_data() {
 
 #[tokio::test]
 async fn test_entropy_threshold_flagging() {
-    use veriscan_lib::stages::inspect::shannon_entropy;
-
     // Create high-entropy data (simulating packed/encrypted content).
     let mut high_entropy_data = Vec::new();
     for i in 0u8..=255 {
@@ -308,6 +293,7 @@ async fn test_malware_stage_tool_missing_produces_tool_missing_result() {
 }
 
 #[tokio::test]
+#[allow(clippy::field_reassign_with_default)]
 async fn test_policy_require_signature_fails_without_sig() {
     use veriscan_lib::{
         evidence::{PipelineResults, SignatureResult},
@@ -329,6 +315,7 @@ async fn test_policy_require_signature_fails_without_sig() {
 }
 
 #[tokio::test]
+#[allow(clippy::field_reassign_with_default)]
 async fn test_policy_malware_detected_always_fails() {
     use veriscan_lib::{
         evidence::{MalwareResult, PipelineResults, SignatureResult},

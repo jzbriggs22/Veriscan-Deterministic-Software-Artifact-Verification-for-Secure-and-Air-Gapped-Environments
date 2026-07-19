@@ -283,7 +283,7 @@ veriscan's dependencies are chosen for minimal attack surface, active maintenanc
 
 - All dependencies are pinned to a minimum minor version in `Cargo.toml`.
 - `Cargo.lock` is committed to the repository for binary builds to ensure reproducible builds.
-- The dependency tree is reviewed with `cargo audit` against the RustSec advisory database as part of the release process. No hosted CI configuration is bundled with the repository.
+- The dependency tree is reviewed with `cargo audit` against the RustSec advisory database. The bundled GitHub Actions workflow (`.github/workflows/ci.yml`) runs `cargo fmt --check`, `cargo clippy -- -D warnings`, the full test suite, and a `cargo audit` pass (advisory, non-blocking) on every push and pull request.
 - Any dependency with a published RUSTSEC advisory affecting veriscan's usage will be updated or mitigated within **14 days** of advisory publication for high/critical severity, and **60 days** for low/medium.
 
 ### Supply Chain Integrity of veriscan Itself

@@ -1,12 +1,3 @@
-/// Integration tests: offline bundle integrity.
-///
-/// Verifies that:
-/// - A valid bundle verifies correctly.
-/// - A tampered artifact in the bundle is detected via manifest hash check.
-/// - A tampered manifest is detected via manifest signature check.
-/// - Path traversal attempts in bundle manifests are rejected.
-/// - Missing manifest signature causes hard FAILED.
-use std::io::Write;
 use std::path::Path;
 use tempfile::TempDir;
 use veriscan_lib::{

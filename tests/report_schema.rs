@@ -22,6 +22,7 @@ fn default_policy() -> Policy {
     Policy::default_policy().expect("default policy")
 }
 
+#[allow(clippy::field_reassign_with_default)]
 fn sample_pipeline() -> PipelineResults {
     let mut p = PipelineResults::default();
     p.hash_sha256 = Some("a".repeat(64));

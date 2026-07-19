@@ -31,7 +31,8 @@ fn ci_gate_policy() -> Policy {
 }
 
 /// Build a baseline clean pipeline result (all checks passed).
-fn clean_pipeline(policy: &Policy) -> PipelineResults {
+#[allow(clippy::field_reassign_with_default)]
+fn clean_pipeline(_policy: &Policy) -> PipelineResults {
     let mut p = PipelineResults::default();
     p.hash_sha256 = Some("abc123def456".to_string().repeat(5));
     p.hash_sha512 = Some("def456abc123".to_string().repeat(10));
@@ -300,7 +301,7 @@ fn test_high_entropy_flag_is_evidence_not_standalone_fail() {
     let result = evaluate(&pipeline, &policy).expect("evaluate");
     // With default policy, high entropy alone shouldn't FAIL (it's flagged in evidence).
     // The test verifies the entropy flag appears in the decision trace.
-    let trace_has_entropy = result
+    let _trace_has_entropy = result
         .decision_trace
         .iter()
         .any(|t| t.condition.contains("Entropy") || t.rule_description.contains("entropy"));
