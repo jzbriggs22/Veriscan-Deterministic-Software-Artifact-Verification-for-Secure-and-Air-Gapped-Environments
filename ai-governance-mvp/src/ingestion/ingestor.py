@@ -105,7 +105,8 @@ class DecisionIngestor:
             return False, f"confidence must be in [0, 1], got {decision.confidence}"
         if decision.processing_time_ms < 0:
             return False, "processing_time_ms must be non-negative"
-        if decision.timestamp > datetime.utcnow().replace(microsecond=0).replace(microsecond=999999):
+        # Grace up to the end of the current second to absorb clock skew.
+        if decision.timestamp > datetime.utcnow().replace(microsecond=999999):
             return False, "timestamp is in the future"
         return True, ""
 

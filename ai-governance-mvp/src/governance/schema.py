@@ -4,7 +4,7 @@ from __future__ import annotations
 import math
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Optional
 
@@ -63,6 +63,12 @@ class AgentDecision:
             raise ValueError(f"confidence must be in [0, 1], got {self.confidence}")
         if self.processing_time_ms < 0:
             raise ValueError("processing_time_ms must be non-negative")
+        # The store and detection windows operate on naive UTC datetimes;
+        # normalize timezone-aware timestamps (e.g. ISO-8601 with 'Z' or an
+        # offset, as parsed at the API boundary) instead of failing later on
+        # naive-vs-aware comparisons.
+        if self.timestamp.tzinfo is not None:
+            self.timestamp = self.timestamp.astimezone(timezone.utc).replace(tzinfo=None)
 
 
 @dataclass
