@@ -12,7 +12,7 @@ OUT_DIR="${DEMO_DIR}/out"
 mkdir -p "${OUT_DIR}"
 
 VERISCAN="veriscan"
-command -v veriscan &>/dev/null || VERISCAN="${DEMO_DIR}/../../target/release/veriscan"
+command -v veriscan &>/dev/null || VERISCAN="${DEMO_DIR}/../target/release/veriscan"
 
 echo "======================================================"
 echo " Veriscan Report Generation"

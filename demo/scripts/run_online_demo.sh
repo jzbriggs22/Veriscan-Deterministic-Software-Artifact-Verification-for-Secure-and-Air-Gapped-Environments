@@ -18,7 +18,7 @@ OUT_DIR="${DEMO_DIR}/out"
 POLICIES_DIR="/policies"
 
 # Fall back to local policies if /policies not available.
-[ -d "${POLICIES_DIR}" ] || POLICIES_DIR="${DEMO_DIR}/../../policies"
+[ -d "${POLICIES_DIR}" ] || POLICIES_DIR="${DEMO_DIR}/../policies"
 
 mkdir -p "${OUT_DIR}"
 
@@ -29,7 +29,7 @@ if [ ! -f "${FIXTURES_DIR}/good/demo_artifact.tar.gz" ]; then
 fi
 
 VERISCAN="veriscan"
-command -v veriscan &>/dev/null || VERISCAN="${DEMO_DIR}/../../target/release/veriscan"
+command -v veriscan &>/dev/null || VERISCAN="${DEMO_DIR}/../target/release/veriscan"
 
 separator() {
     echo ""

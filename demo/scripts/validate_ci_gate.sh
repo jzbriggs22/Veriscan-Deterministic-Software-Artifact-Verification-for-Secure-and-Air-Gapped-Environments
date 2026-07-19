@@ -15,7 +15,7 @@ FIXTURES_DIR="${DEMO_DIR}/fixtures"
 OUT_DIR="${DEMO_DIR}/out"
 POLICIES_DIR="/policies"
 
-[ -d "${POLICIES_DIR}" ] || POLICIES_DIR="${DEMO_DIR}/../../policies"
+[ -d "${POLICIES_DIR}" ] || POLICIES_DIR="${DEMO_DIR}/../policies"
 
 mkdir -p "${OUT_DIR}"
 
@@ -25,7 +25,7 @@ if [ ! -f "${FIXTURES_DIR}/good/demo_artifact.tar.gz" ]; then
 fi
 
 VERISCAN="veriscan"
-command -v veriscan &>/dev/null || VERISCAN="${DEMO_DIR}/../../target/release/veriscan"
+command -v veriscan &>/dev/null || VERISCAN="${DEMO_DIR}/../target/release/veriscan"
 
 echo "======================================================"
 echo " CI Gate Validation Demo"

@@ -15,7 +15,7 @@ FIXTURES_DIR="${DEMO_DIR}/fixtures"
 OUT_DIR="${DEMO_DIR}/out"
 POLICIES_DIR="/policies"
 
-[ -d "${POLICIES_DIR}" ] || POLICIES_DIR="${DEMO_DIR}/../../policies"
+[ -d "${POLICIES_DIR}" ] || POLICIES_DIR="${DEMO_DIR}/../policies"
 
 mkdir -p "${OUT_DIR}"
 
@@ -26,7 +26,7 @@ if [ ! -d "${FIXTURES_DIR}/good/bundle" ]; then
 fi
 
 VERISCAN="veriscan"
-command -v veriscan &>/dev/null || VERISCAN="${DEMO_DIR}/../../target/release/veriscan"
+command -v veriscan &>/dev/null || VERISCAN="${DEMO_DIR}/../target/release/veriscan"
 
 separator() {
     echo ""
@@ -49,8 +49,8 @@ separator "Offline Scenario 1: VERIFIED — Valid offline bundle"
     /dev/null && EXITCODE=0 || EXITCODE=$?   # Source arg unused in offline mode
 echo "Exit code: ${EXITCODE}"
 ( [ "${EXITCODE}" -eq 0 ] || [ "${EXITCODE}" -eq 20 ] ) \
-    && echo "✅ PASS: Offline bundle verified (20 = FAILED: airgapped policy requires a malware scanner; install ClamAV for exit 0)" \
-    || echo "❌ FAIL: Expected exit 0 (ClamAV present) or 20 (no scanner), got ${EXITCODE}"
+    && echo "✅ PASS: Bundle integrity verified (20 = fail-closed policy: empty allow_signers pins no signers, and no malware scanner; pin the demo key fingerprint and install ClamAV for exit 0)" \
+    || echo "❌ FAIL: Expected exit 0 or 20, got ${EXITCODE}"
 
 # ── Scenario 2: FAILED — Tampered artifact in bundle ─────────────────────
 

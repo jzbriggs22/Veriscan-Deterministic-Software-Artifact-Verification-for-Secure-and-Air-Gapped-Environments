@@ -432,7 +432,9 @@ demo/fixtures/good/bundle/
     --report-md  demo/out/offline_verified.md \
     /dev/null   # source arg required but unused in --offline mode
 
-echo "Exit code: $?"   # Expected: 0 (VERIFIED, ClamAV present) or 20 (FAILED — airgapped policy requires a malware scanner)
+echo "Exit code: $?"   # Expected: 20 — bundle integrity passes, but the shipped airgapped policy fails closed
+                       # (allow_signers is empty, so no signer is pinned; the malware scanner is also required).
+                       # To reach 0 (VERIFIED): add the demo key fingerprint to allow_signers and install ClamAV.
 ```
 
 ### Scenario 5b: FAILED — Tampered Artifact in Bundle
@@ -663,7 +665,7 @@ jq '.verdict' demo/out/scenario1_verified.json
 | 3: Unsigned (default) | default | No signature | VERIFIED or UNVERIFIED | 0 or 10 |
 | 4: EICAR (ClamAV present) | default | Malware detected | FAILED | 20 |
 | 4: EICAR (no ClamAV) | default | Scanner unavailable | UNVERIFIED | 10 |
-| 5a: Valid bundle | airgapped | Bundle intact | VERIFIED (or FAILED without ClamAV) | 0 or 20 |
+| 5a: Valid bundle | airgapped | Bundle intact | FAILED (fail-closed: no pinned signers / no scanner) | 20 |
 | 5b: Tampered artifact | airgapped | File hash mismatch in manifest | Bundle integrity error | 99 |
 | 5c: Tampered manifest | airgapped | Manifest sig invalid | FAILED | 99 |
 | 5d: Missing manifest sig | airgapped | Manifest sig missing | FAILED | 99 |
