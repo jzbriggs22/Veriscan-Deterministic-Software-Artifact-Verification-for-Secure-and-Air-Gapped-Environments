@@ -42,7 +42,7 @@ Defines the `EvidenceItem` struct and `EvidenceBuilder` fluent API. Also defines
 - `PipelineResults` — accumulator for all stage outputs, passed to the policy stage.
 - `SignatureResult`, `MalwareResult`, `InspectionResult`, `ReputationResult` — typed per-stage outcome enums.
 
-The `EvidenceItem::new()` constructor computes the `deterministic_id` by constructing a canonical string (stage name + sorted inputs + sorted outputs), hashing it with SHA-256, and hex-encoding the result. This ensures the ID is stable across runs given identical inputs and outputs.
+The `EvidenceItem::new()` constructor computes the `deterministic_id` by constructing a canonical string (stage name + timestamp + sorted inputs + sorted outputs), hashing it with SHA-256, and hex-encoding the result. Because the timestamp is part of the canonical form, the ID differs across runs; it uniquely identifies an evidence item within a run and can be independently reproduced from the recorded fields, making post-generation tampering detectable.
 
 ### `src/config.rs` — Policy and Runtime Configuration
 
@@ -121,7 +121,7 @@ If `clamscan` is not found at the configured or default path, returns `MalwareRe
 
 Performs static analysis without executing the artifact:
 - **File type detection:** Magic byte signatures for ELF, PE, Mach-O, ZIP, GZIP, BZIP2, XZ, RAR, PDF, PNG, JPEG, GIF, shebang scripts, Debian packages, RPM, WebAssembly, Java class files. Falls back to file extension.
-- **Shannon entropy computation:** Computed over a configurable sample (default: 1 MiB). Values above `max_entropy_threshold` (default: 7.2 bits) set `entropy_flagged = true`.
+- **Shannon entropy computation:** Computed over a configurable sample (default: 1 MiB). Values above `max_entropy_threshold` (default: 7.5 bits) set `entropy_flagged = true`.
 - **String extraction:** Printable ASCII runs of `>= min_string_length` characters, bounded to `max_inspection_strings` results.
 - **Indicator scanning:** Regex-based detection of HTTP/HTTPS URLs, PowerShell dangerous keywords (`Invoke-Expression`, `IEX`, `DownloadString`, etc.), shell injection patterns (`curl -o`, `chmod +x`, `/dev/tcp/`, etc.), and large base64 blobs.
 
@@ -401,4 +401,4 @@ The `deterministic_id` allows any consumer of the JSON report to independently v
 | Linux | aarch64 | Supported; pure-Rust backend is architecture-agnostic |
 | macOS | x86-64 | Supported; ClamAV via Homebrew |
 | macOS | arm64 (Apple Silicon) | Supported |
-| Windows | x86-64 | Documented; build tested; ClamAV path configuration required |
+| Windows | x86-64 | Native Windows builds are not tested; use WSL 2 or Docker with a Linux container |

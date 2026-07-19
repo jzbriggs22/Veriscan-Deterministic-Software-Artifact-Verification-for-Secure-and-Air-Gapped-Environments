@@ -27,9 +27,9 @@ The following table summarizes veriscan's top-level alignment with major complia
 
 | Framework | Relevant Control Families | veriscan Alignment |
 |-----------|--------------------------|-------------------|
-| NIST SP 800-53 Rev 5 | CM (Configuration Management) | Supports CM-3, CM-4, CM-7, CM-14 |
-| NIST SP 800-53 Rev 5 | SI (System and Information Integrity) | Supports SI-2, SI-3, SI-7, SI-10 |
-| NIST SP 800-53 Rev 5 | SA (System and Services Acquisition) | Supports SA-8, SA-9, SA-10, SA-15 |
+| NIST SP 800-53 Rev 5 | CM (Configuration Management) | Supports CM-3, CM-6, CM-7, CM-14 |
+| NIST SP 800-53 Rev 5 | SI (System and Information Integrity) | Supports SI-3, SI-7, SI-10 |
+| NIST SP 800-53 Rev 5 | SA (System and Services Acquisition) | Supports SA-8, SA-11, SA-12, SA-15 |
 | NIST SP 800-53 Rev 5 | AU (Audit and Accountability) | Supports AU-2, AU-3, AU-9, AU-12 |
 | NIST SP 800-161 Rev 1 | SCRM Controls | Supports C-SCRM throughout supply chain |
 
@@ -71,20 +71,19 @@ The JSON report produced by each run includes the policy digest (SHA-256 of the 
 
 ---
 
-#### CM-4: Impact Analysis
+#### CM-6: Configuration Settings
 
-**Control excerpt (paraphrased):** Analyze changes to the system to determine potential security impacts before the change is implemented.
+**Control excerpt (paraphrased):** Establish, document, and implement configuration settings that reflect the most restrictive mode consistent with operational requirements; monitor and control changes to the settings.
 
 **veriscan alignment:**
 
-The static inspection stage provides observable, measurable indicators about an artifact before it is deployed:
-- Presence of known-dangerous string patterns (PowerShell invocation, shell command injection patterns, suspicious URLs).
-- Shannon entropy above the configured threshold (`max_entropy_threshold`) flags potentially packed or encrypted artifacts for additional review.
-- File type classification identifies executables, scripts, and package formats, enabling type-based policy enforcement.
+Verification behavior is fully specified by declarative configuration settings that can be established, documented, and controlled:
+- Four reference policy profiles (`default.yaml`, `contractor_strict.yaml`, `airgapped.yaml`, `ci_gate.yaml`) encode security-relevant configuration settings for different deployment contexts.
+- The `veriscan policy-validate` subcommand verifies that policy settings conform to the schema and semantic constraints before use.
+- Invalid settings produce exit code 99 (tool error) without executing any verification.
+- The policy digest recorded in every report makes configuration drift detectable across runs.
 
-The reputation stage cross-references the artifact's SHA-256 hash against VirusTotal's multi-engine analysis database, providing external threat intelligence as one input to the impact assessment.
-
-**Supporting evidence fields:** `inspection.indicators`, `inspection.entropy_flagged`, `reputation.engines_detected`, `reputation.engines_total`
+**Supporting report fields:** `policy.name`, `policy.version`, `policy.digest`
 
 ---
 
@@ -125,23 +124,6 @@ The `allow_signers` field in the policy stores the exact fingerprints (40-hex PG
 
 ### 2.2 System and Information Integrity (SI) Family
 
-#### SI-2: Flaw Remediation
-
-**Control excerpt (paraphrased):** Identify, report, and correct information system flaws; test software updates before installation.
-
-**veriscan alignment:**
-
-The malware scan stage integrates ClamAV for signature-based detection of known malware and vulnerability exploits in artifact content. Before a software update (artifact) is staged for installation:
-- ClamAV scans the artifact bytes.
-- Detection names are recorded in the evidence and report.
-- A positive detection results in an immediate `FAILED` verdict, blocking installation.
-
-The reputation stage additionally checks the artifact's SHA-256 against VirusTotal. VirusTotal aggregates results from 70+ antivirus engines, increasing the probability that known-flawed or compromised artifacts are identified before deployment.
-
-**Supporting evidence fields:** `malware_scan.status`, `malware_scan.engine`, `malware_scan.detections`, `reputation.status`, `reputation.engines_detected`
-
----
-
 #### SI-3: Malware Protection
 
 **Control excerpt (paraphrased):** Implement malicious code protection mechanisms at information system entry points and exit points; update mechanisms when new releases are available.
@@ -169,7 +151,7 @@ This control is the primary focus of veriscan. The tool implements multiple laye
 
 1. **Cryptographic hashing:** SHA-256 and SHA-512 computed over the complete artifact byte stream. Expected values supplied via CLI argument or adjacent checksum files are verified; mismatch is `ERR_HASH_MISMATCH` (FAILED).
 2. **PGP signature verification:** Detached signature verification using trusted public keys. Signer fingerprint pinning provides additional assurance.
-3. **Inter-stage mutation detection:** The artifact's SHA-256 is re-verified after each pipeline stage. Detection of mutation between stages produces `ERR_ARTIFACT_MUTATED` (FAILED), addressing TOCTOU attacks.
+3. **Inter-stage mutation detection:** The artifact's SHA-256 is re-verified after the hash, signature, malware, and inspect stages — the stages that read artifact content. Detection of mutation between stages aborts the run with a pipeline error (`ERR_ARTIFACT_MUTATED`, exit code 99; no report is emitted), addressing TOCTOU attacks.
 4. **Bundle manifest integrity:** For offline bundles, the manifest's PGP signature is verified before any manifest content is trusted, and every file's hash is verified against the manifest.
 
 **Supporting evidence fields:** `hashes.*`, `signature.*`, all `deterministic_id` fields in the evidence chain
@@ -216,37 +198,34 @@ The following engineering principles are evident in the veriscan design:
 
 ---
 
-#### SA-9: External System Services
+#### SA-11: Developer Testing and Evaluation
 
-**Control excerpt (paraphrased):** Require external service providers to implement security controls; monitor provider compliance.
+**Control excerpt (paraphrased):** Require the developer of the system to create and implement a plan for testing and evaluation, and to produce evidence of its execution.
 
 **veriscan alignment:**
 
-veriscan's only external service dependency is the VirusTotal API (reputation stage). Controls applied to this dependency:
-- Only the artifact's SHA-256 hash is transmitted — never the artifact bytes themselves.
-- The API key is read from an environment variable, never stored in policy files or on disk.
-- API calls use TLS encryption.
-- Results are cached locally with a configurable TTL (`reputation_cache_ttl_seconds`).
-- Unavailability of the VirusTotal service degrades gracefully to `UNVERIFIED` or `FAILED` depending on `reputation_failure_is_fatal`.
-- The air-gapped policy (`airgapped.yaml`) sets `allow_network: false`, disabling all external calls entirely.
+The integration test suite (`tests/`) exercises the security-relevant behavior of the tool:
+- Pipeline stage ordering invariants (`tests/pipeline_invariants.rs`).
+- In-pipeline mutation detection.
+- Offline bundle scenarios: valid, tampered artifact, tampered manifest, missing signature (`tests/offline_bundle.rs`).
+- Policy decision matrix evaluation (`tests/policy_decisions.rs`).
+- JSON report schema stability (`tests/report_schema.rs`).
 
-**Supporting policy fields:** `vt_api_key_env`, `reputation_required`, `reputation_failure_is_fatal`, `allow_network`, `network_timeout_seconds`
+`cargo test` executes the full suite. Operator acceptance testing and system-level testing in the deployed environment are separate activities not covered by the source test suite.
 
 ---
 
-#### SA-10: Developer Configuration Management
+#### SA-12: Supply Chain Protection
 
-**Control excerpt (paraphrased):** Require developers to perform configuration management including tracking approved changes.
+**Control excerpt (paraphrased):** Protect against supply chain threats by employing security safeguards as part of a comprehensive defense-in-depth strategy.
 
 **veriscan alignment:**
 
-The policy digest feature enables configuration management of verification policies:
-- Each policy document's SHA-256 digest is included in every report.
-- Changes to policy configuration are detectable by comparing digests across runs.
-- The policy `version` field provides a human-readable change identifier.
-- Policy files can be managed in version control and their digests validated in audit workflows.
+veriscan is a direct technical implementation of supply chain protection at the artifact intake point. Hash verification, PGP signature verification with signer fingerprint pinning, ClamAV malware scanning, static content inspection, VirusTotal reputation checking, and declarative policy enforcement together provide layered supply chain controls before any artifact is admitted.
 
-**Supporting report fields:** `policy.name`, `policy.version`, `policy.digest`
+See `docs/controls/nist_800_161.md` for the dedicated NIST SP 800-161 Rev 1 SCRM practice mappings.
+
+**Supporting report fields:** the entire JSON report; see all `report.*` fields
 
 ---
 
@@ -259,7 +238,7 @@ The policy digest feature enables configuration management of verification polic
 - veriscan is written in Rust, a memory-safe language by default.
 - The release profile enables LTO, single codegen unit, and symbol stripping.
 - No `unsafe` blocks in security-critical code paths.
-- Dependencies are pinned and audited via `cargo audit`.
+- Dependencies are pinned and audited with `cargo audit` as part of the release process; no hosted CI configuration is bundled with the repository.
 - The test suite includes pipeline invariant tests (`tests/pipeline_invariants.rs`), policy decision tests (`tests/policy_decisions.rs`), and offline bundle tests (`tests/offline_bundle.rs`).
 
 ---
@@ -279,7 +258,7 @@ veriscan emits structured JSON logs via the `tracing` subsystem for every signif
 - Network requests (URL, status code — not API keys).
 - Error conditions with stable error codes (e.g., `ERR_HASH_MISMATCH`).
 
-The `--audit-log` CLI flag directs structured log output to a file separate from the main report.
+The `--audit-log` CLI flag appends one JSON line — the complete verification report — to the specified file at the completion of each verification run that produces a report (JSONL append; the file is created if absent and never truncated).
 
 ---
 
@@ -317,7 +296,7 @@ Each evidence item also carries:
 
 **veriscan alignment:**
 
-The `deterministic_id` field on each evidence item is the SHA-256 of the canonical serialization of that item's content (stage name, inputs, outputs, tool versions). Any modification of an evidence record in the report will cause its `deterministic_id` to no longer match. While veriscan does not sign its output reports, the evidence chain provides a tamper-evident structure. Operators requiring tamper-proof audit logs should:
+The `deterministic_id` field on each evidence item is the SHA-256 of the canonical serialization of that item's content (stage name, timestamp, sorted inputs, and sorted outputs; `tool_versions` is not covered by the digest). Any modification of an evidence record in the report will cause its `deterministic_id` to no longer match. While veriscan does not sign its output reports, the evidence chain provides a tamper-evident structure. Operators requiring tamper-proof audit logs should:
 1. Pipe the JSON report through a signing step (e.g., `gpg --detach-sign report.json`).
 2. Write reports to append-only or WORM storage.
 3. Compute and store a hash of the JSON report alongside the report.
@@ -384,7 +363,7 @@ Provenance verification in veriscan:
 **veriscan alignment:**
 
 The policy engine supports risk-tiered configurations:
-- `contractor_strict.yaml` — maximum requirements; all checks required; any failure is fatal.
+- `contractor_strict.yaml` — highest-assurance profile: signature verification required and fatal on failure; checksums required; malware scan required, but a scan failure or missing scanner is non-fatal (flagged); reputation lookup attempted but non-fatal if unavailable.
 - `default.yaml` — balanced requirements suitable for general use.
 - `ci_gate.yaml` — automated gating with sensible defaults for CI environments.
 - `airgapped.yaml` — network-isolated operation for the highest-sensitivity environments.
@@ -473,7 +452,7 @@ A formatted Markdown document suitable for inclusion in change records, deployme
 
 ### 4.4 Structured Audit Logs
 
-When `--audit-log <path>` is specified, structured JSON log events are written to the specified file. These include every stage transition, external tool invocation, and error event with associated metadata.
+When `--audit-log <path>` is specified, one JSON line containing the complete verification report is appended to the specified file at the completion of each verification run that produces a report. The file is created if absent and never truncated (JSONL append), accumulating an append-only audit trail across runs.
 
 ---
 

@@ -125,7 +125,7 @@ The seven-stage pipeline (`Acquire → Hash → Signature → Malware → Inspec
 
 ### 4.6 Artifact Integrity Is Verified Between Stages
 
-After each stage, the orchestrator re-computes the SHA-256 of the artifact on disk and compares it to the hash recorded at acquisition time. Any mutation detected between stages causes an immediate `FAILED` with error code `ERR_ARTIFACT_MUTATED`. This detects TOCTOU (time-of-check/time-of-use) attacks where a compromised staging area could swap the artifact after the hash check.
+After the hash, signature, malware, and inspect stages — the stages that read artifact content — the orchestrator re-computes the SHA-256 of the artifact on disk and compares it to the hash recorded at acquisition time. Any mutation detected between stages aborts the run with a pipeline error carrying error code `ERR_ARTIFACT_MUTATED`: the process exits with code 99 and no report is emitted. This detects TOCTOU (time-of-check/time-of-use) attacks where a compromised staging area could swap the artifact after the hash check.
 
 ### 4.7 Policy Is Auditable and Deterministic
 
@@ -143,9 +143,11 @@ Hash computation uses [`sha2`](https://crates.io/crates/sha2) from the RustCrypt
 
 ```toml
 # Cargo.toml — pure-Rust crypto backend
-sequoia-openpgp = { version = "1", default-features = false, features = ["crypto-rust"] }
+sequoia-openpgp = { version = "1", default-features = false, features = ["crypto-rust", "allow-experimental-crypto", "allow-variable-time-crypto"] }
 sha2 = "0.10"
 ```
+
+The `allow-experimental-crypto` flag is the required opt-in for the RustCrypto backend. The `allow-variable-time-crypto` flag is required because RustCrypto does not provide constant-time operations; this is acceptable for veriscan's non-interactive batch verification workload, where timing side-channels against a live user are not a concern.
 
 The release build profile enables link-time optimization (`lto = true`) and single codegen unit (`codegen-units = 1`) to maximize compiler visibility into the full binary and strip dead code and unnecessary symbols (`strip = true`).
 
@@ -175,19 +177,31 @@ cmd.args(args)
 
 ### 5.3 Path Traversal Prevention
 
-All file paths derived from user-supplied input, manifest entries, or policy configuration are normalized and validated before use. The `safe_path` utility in `src/util/fs.rs` rejects any path component containing `..` (parent directory traversal). The bundle verification stage independently checks for traversal using a `safe_bundle_path` function that additionally rejects absolute paths embedded in manifest entries.
+Bundle-relative paths taken from manifest entries — the only paths derived from untrusted input — are validated by the `safe_bundle_path` function in `src/stages/bundle.rs` before use. The function applies a lexical pre-check that rejects absolute paths and any path containing `..`, then canonicalizes both the bundle root and the joined path (resolving symlinks and relative segments) and requires the resolved path to remain contained under the canonicalized bundle root. Other CLI-supplied paths (artifact, policy, key, and report paths) are provided directly by the operator and used as given.
 
 ```rust
-// Bundle manifest path validation
+// src/stages/bundle.rs — bundle manifest path validation
 fn safe_bundle_path(base: &Path, relative: &str) -> Result<PathBuf, VeriError> {
+    // Fast lexical pre-check — catches the common cases early.
     if relative.starts_with('/') || relative.contains("..") {
         return Err(VeriError::PathTraversal { path: relative.to_string() });
     }
-    Ok(base.join(relative))
+
+    // Canonical base: must exist or we cannot safely confine.
+    let base_abs = base.canonicalize()?;
+    let joined = base_abs.join(relative);
+
+    // Canonicalize the joined path (resolves symlinks, normalizes segments).
+    let resolved = if joined.exists() { joined.canonicalize()? } else { joined.clone() };
+
+    if !resolved.starts_with(&base_abs) {
+        return Err(VeriError::PathTraversal { path: relative.to_string() });
+    }
+    Ok(resolved)
 }
 ```
 
-A malicious bundle manifest that lists `../../etc/passwd` as a file path will be rejected before any file operations are performed.
+A malicious bundle manifest that lists `../../etc/passwd` as a file path — or that attempts to escape the bundle directory through a symlink — will be rejected before any file operations are performed.
 
 ### 5.4 Secret Redaction in Evidence
 
@@ -262,7 +276,6 @@ veriscan's dependencies are chosen for minimal attack surface, active maintenanc
 | `thiserror` / `anyhow` | latest | Error handling | No unsafe code |
 | `walkdir` | 2.5 | Directory traversal | Bounded depth; `follow_links: false` |
 | `tempfile` | 3.12 | Atomic writes | Secure temp file creation |
-| `base64` | 0.22 | Static inspection only | Not used for cryptographic operations |
 | `chrono` | 0.4 | Timestamps | No security operations |
 | `hex` | 0.4 | Hash encoding | Simple encoding; no cryptographic operations |
 
@@ -270,7 +283,7 @@ veriscan's dependencies are chosen for minimal attack surface, active maintenanc
 
 - All dependencies are pinned to a minimum minor version in `Cargo.toml`.
 - `Cargo.lock` is committed to the repository for binary builds to ensure reproducible builds.
-- The dependency tree is reviewed with `cargo audit` against the RustSec advisory database as part of the CI pipeline.
+- The dependency tree is reviewed with `cargo audit` against the RustSec advisory database as part of the release process. No hosted CI configuration is bundled with the repository.
 - Any dependency with a published RUSTSEC advisory affecting veriscan's usage will be updated or mitigated within **14 days** of advisory publication for high/critical severity, and **60 days** for low/medium.
 
 ### Supply Chain Integrity of veriscan Itself

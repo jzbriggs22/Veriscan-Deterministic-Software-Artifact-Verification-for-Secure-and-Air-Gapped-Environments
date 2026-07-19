@@ -142,7 +142,7 @@ Any discrepancy indicates the evidence record was modified after generation.
 
 **Tool versions:** none (pure Rust `sha2` crate)
 
-**Evidential value:** Records the cryptographic identity of the artifact and whether it matches the operator's declared expected value. A `sha256_matched: false` output would appear in the evidence even though the pipeline halts with FAILED before reaching later stages; in practice, if this field is `false`, the pipeline returns FAILED and subsequent stages do not execute.
+**Evidential value:** Records the cryptographic identity of the artifact and whether it matches the operator's declared expected value. Note that on a checksum mismatch the hash stage returns an error *before* its evidence item is constructed: the run produces a FAILED report containing the acquire evidence only, `hashes.sha256` is null in that report, and no hash evidence item is present. Consequently, when the `sha256_matched` field appears in evidence its value is always `true`; a mismatch is documented by the FAILED verdict reason (`ERR_HASH_MISMATCH` context) rather than by a `sha256_matched: false` output.
 
 ---
 
@@ -247,9 +247,9 @@ Tool versions: captured if version was obtained before the error
 
 **Case A — Checked (clean or malicious):**
 
-Inputs: `sha256` (the artifact's SHA-256 hash), `source: "VirusTotal v3"` (or `"VirusTotal v3 (cached)"`)
+Inputs: `sha256` (the artifact's SHA-256 hash), `source: "VirusTotal v3"` (the evidence source is always `"VirusTotal v3"`, including on cache hits; a `"(cached)"` marker appears only in the report-level `reputation.source` field)
 
-Outputs: `reputation_status: "clean"` or `"malicious"`, `engines_total` (number), `engines_detected` (number), `reputation_label: "clean"` or `"malicious"`, `last_seen` (ISO 8601 timestamp, if available)
+Outputs: `engines_total` (number), `engines_detected` (number), `reputation_label: "clean"` or `"malicious"`, `last_seen` (ISO 8601 timestamp, if available)
 
 **Case B — Skipped (offline, no API key, not in database):**
 
@@ -259,9 +259,9 @@ Outputs: `reputation_status: "skipped"`, `reason` (description string)
 
 **Tool versions:** none (HTTP API call, not a subprocess)
 
-**Note on API key:** The API key is deliberately excluded from all evidence records. It appears only in the HTTP Authorization header during the API call and is not recorded anywhere in the report or evidence.
+**Note on API key:** The API key is deliberately excluded from all evidence records. It appears only in the `x-apikey` HTTP request header during the API call and is not recorded anywhere in the report or evidence.
 
-**Evidential value:** Records whether the artifact's hash is known to the VirusTotal threat intelligence database. The `engines_total` and `engines_detected` values provide context for the verdict. Cache hits are noted with `"(cached)"` in the source field.
+**Evidential value:** Records whether the artifact's hash is known to the VirusTotal threat intelligence database. The `engines_total` and `engines_detected` values provide context for the verdict. Cache hits are noted with `"(cached)"` in the report-level `reputation.source` field; the evidence input `source` remains `"VirusTotal v3"`.
 
 ---
 

@@ -224,7 +224,7 @@ veriscan enforces a mandatory, ordered, seven-stage pipeline. No CLI flag, envir
 [Acquire] -> [Hash] -> [Signature] -> [Malware] -> [Inspect] -> [Reputation] -> [Policy]
 ```
 
-After each stage, the orchestrator re-hashes the artifact on disk and compares the result to the hash recorded at acquisition time. Any difference triggers an immediate `FAILED` with `ERR_ARTIFACT_MUTATED`, addressing time-of-check/time-of-use (TOCTOU) concerns.
+After the hash, signature, malware, and inspect stages — the stages that read artifact content — the orchestrator re-hashes the artifact on disk and compares the result to the hash recorded at acquisition time. Any difference aborts the run with a pipeline error (`ERR_ARTIFACT_MUTATED`): the process exits with code 99 and no report is emitted. This addresses time-of-check/time-of-use (TOCTOU) concerns.
 
 ### 5.2 Stage 1: Acquire
 
@@ -279,7 +279,7 @@ Invokes ClamAV for signature-based malware detection.
 Performs static analysis of artifact content without execution.
 
 - Detects file type using magic bytes (ELF, PE, Mach-O, ZIP, GZIP, BZIP2, XZ, PDF, PNG, JPEG, RPM, DEB, WASM, Java class, scripts) with extension fallback.
-- Computes Shannon entropy over a sampled byte range (default 1 MiB). Flags if entropy exceeds `max_entropy_threshold` (default 7.2 bits/byte).
+- Computes Shannon entropy over a sampled byte range (default 1 MiB). Flags if entropy exceeds `max_entropy_threshold` (default 7.5 bits/byte).
 - Extracts printable ASCII strings (minimum `min_string_length` characters, up to `max_inspection_strings` total).
 - Scans extracted strings for indicators: URL patterns, PowerShell execution keywords (`Invoke-Expression`, `IEX`, `FromBase64String`, etc.), shell patterns (`curl -o`, `wget -O`, `/dev/tcp/`, `nc -e`, `LD_PRELOAD`), and base64 blobs.
 - Classifies artifact as executable, script, or data.
@@ -500,16 +500,15 @@ Encoding verification requirements in a versioned YAML file provides compliance 
 | Control | Title | veriscan Alignment |
 |---------|-------|-------------------|
 | CM-3 | Configuration Change Control | Hash verification; policy digest tracks policy changes |
-| CM-4 | Impact Analysis | Static inspection; reputation lookup; entropy flagging |
+| CM-6 | Configuration Settings | Four reference policy profiles; policy validation before use; policy digest in every report |
 | CM-7 | Least Functionality | `deny_file_types`; `executable_handling`; URL denylist |
 | CM-14 | Signed Components | PGP signature verification; `allow_signers` fingerprint pinning |
-| SI-2 | Flaw Remediation | ClamAV malware scan; VirusTotal reputation check |
 | SI-3 | Malware Protection | Hardened ClamAV subprocess; bounded output; timeout |
 | SI-7 | Software, Firmware, and Information Integrity | SHA-256/512; PGP; inter-stage mutation detection; bundle manifests |
 | SI-10 | Information Input Validation | Policy validation; path traversal prevention; input bounds |
 | SA-8 | Security Engineering Principles | Fail-closed; typed errors; defense in depth; no execution |
-| SA-9 | External System Services | Hash-only VT queries; TLS; graceful degradation |
-| SA-10 | Developer Configuration Management | Policy version + digest in every report |
+| SA-11 | Developer Testing and Evaluation | Integration test suite: pipeline invariants, bundle scenarios, policy decisions, report schema |
+| SA-12 | Supply Chain Protection | Layered intake controls: hash, signature, malware scan, inspection, reputation, policy |
 | SA-15 | Development Process, Standards, Tools | Rust memory safety; `cargo audit`; test suite |
 | AU-2 | Event Logging | Structured JSON tracing on all pipeline events |
 | AU-3 | Content of Audit Records | `run_id`, `timestamp`, verdict, evidence chain in every report |
@@ -711,7 +710,7 @@ Planned features for report integrity:
 
 ## Appendix A: Example JSON Report Structure
 
-The following is an abbreviated example of a veriscan JSON report for a successfully verified artifact. Note the high-entropy flag: GZIP archives have high entropy by nature (compressed content), so `entropy_flagged: true` is expected and the decision trace shows the `HighEntropy -> Unverified` rule was evaluated but did not produce a final failure because the overall verdict is determined by the most severe matching condition.
+The following is an abbreviated example of a veriscan JSON report for a successfully verified artifact. Decision-matrix rules are evaluated in declaration order and the first matching rule determines the verdict; later rules cannot upgrade or downgrade it. Note that the decision trace records every rule evaluated, matched or not: here the `HighEntropy -> Unverified` rule was evaluated but did not match because the sampled entropy is below the policy threshold, so the `VERIFIED` verdict stands.
 
 ```json
 {
@@ -757,8 +756,8 @@ The following is an abbreviated example of a veriscan JSON report for a successf
   },
   "inspection": {
     "file_type": "GZIP",
-    "entropy": 7.89,
-    "entropy_flagged": true,
+    "entropy": 6.82,
+    "entropy_flagged": false,
     "indicators": [],
     "is_executable": false,
     "is_script": false
@@ -796,8 +795,8 @@ The following is an abbreviated example of a veriscan JSON report for a successf
     {
       "rule_description": "High entropy: artifact may be packed or encrypted",
       "condition": "HighEntropy",
-      "matched": true,
-      "verdict": "Unverified"
+      "matched": false,
+      "verdict": null
     }
   ],
   "evidence": [
@@ -810,7 +809,7 @@ The following is an abbreviated example of a veriscan JSON report for a successf
       "outputs": {
         "filename": "tool-3.2.1.tar.gz",
         "size_bytes": 8372941,
-        "initial_sha256": "e3b0c44298fc1c..."
+        "sha256_at_acquire": "e3b0c44298fc1c..."
       },
       "tool_versions": {},
       "deterministic_id": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
@@ -953,7 +952,7 @@ The following is a complete evidence item from the `hash` stage of a verificatio
 | `outputs.sha512` | Hex string | SHA-512 computed from artifact bytes |
 | `outputs.sha256_matched` | `true` | Computed SHA-256 matched expected value |
 | `tool_versions` | `{}` | No external tools; pure-Rust hash computation |
-| `deterministic_id` | Hex string | SHA-256 of canonical serialization of this entire item |
+| `deterministic_id` | Hex string | SHA-256 of the canonical serialization of the item's stage name, timestamp, sorted inputs, and sorted outputs (`tool_versions` is not covered) |
 
 **Verifying the deterministic_id independently:**
 

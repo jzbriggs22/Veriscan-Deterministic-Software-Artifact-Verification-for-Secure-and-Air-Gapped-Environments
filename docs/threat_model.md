@@ -150,7 +150,7 @@ Veriscan has no network-enforcement capability; it cannot block traffic. Its ver
 
 **Description:** An attacker with access to the filesystem on which veriscan runs modifies the artifact between pipeline stages (e.g., via a race condition or filesystem hook).
 
-**Controls:** The orchestrator calls `assert_no_mutation()` after each stage, re-computing the artifact SHA-256 and comparing it to the value recorded at acquisition. Any change causes immediate FAILED (exit 20).
+**Controls:** The orchestrator calls `assert_no_mutation()` after the hash, signature, malware, and inspect stages — the stages that read artifact content — re-computing the artifact SHA-256 and comparing it to the value recorded at acquisition. Any change aborts the run with a pipeline error: the process exits with code 99 and no report is emitted.
 
 **Residual Risk:** An attacker who can modify the artifact and also modify the baseline hash stored in the `AcquireResult` struct (i.e., an attacker with memory write access to the veriscan process) can bypass this control. This requires OS-level compromise and is treated as out of scope.
 
@@ -185,7 +185,7 @@ Veriscan has no network-enforcement capability; it cannot block traffic. Its ver
 | Control | Stage | Mechanism |
 |---|---|---|
 | Hash integrity | Hash | SHA-256 and SHA-512 computation + expected value comparison |
-| In-pipeline mutation detection | All (post-hash) | `assert_no_mutation()` re-checks SHA-256 after each stage |
+| In-pipeline mutation detection | Hash / Signature / Malware / Inspect | `assert_no_mutation()` re-checks SHA-256 after each content-reading stage |
 | PGP signature verification | Signature | `sequoia-openpgp` detached signature verification |
 | Signer fingerprint pinning | Signature | `allow_signers` list; signers not listed are rejected |
 | Known malware detection | Malware | ClamAV subprocess with bounded output and cleared environment |
@@ -211,7 +211,7 @@ Veriscan has no network-enforcement capability; it cannot block traffic. Its ver
 | **Spoofing** | Attacker spoofs artifact origin | PGP signature + signer fingerprint pinning | Requires compromise of pinned signing key to bypass |
 | **Spoofing** | Attacker spoofs a trusted mirror | Hash verification + signature verification | Mirror substitution detected by hash mismatch or sig failure |
 | **Tampering** | Artifact tampered in transit | SHA-256 / SHA-512 hash verification | Requires expected checksums to be provided out-of-band |
-| **Tampering** | Artifact tampered on disk between stages | `assert_no_mutation()` after each stage | Detects file system race conditions |
+| **Tampering** | Artifact tampered on disk between stages | `assert_no_mutation()` after the hash, signature, malware, and inspect stages | Detects file system race conditions |
 | **Tampering** | Policy file tampered to weaken controls | Policy digest recorded in report | Tamper detectable post-hoc; prevention requires access controls |
 | **Tampering** | Evidence record tampered post-generation | `deterministic_id` in each evidence item | Full prevention requires signed/immutable report storage |
 | **Repudiation** | Operator denies a verification run occurred | JSON report with run UUID and timestamp | Reports must be stored in append-only or write-once systems |
@@ -301,7 +301,7 @@ The following threats are explicitly out of scope for Veriscan and must be addre
 
 ### 9.4 For Air-Gapped Environment Bypass
 
-**Mitigation:** Use `airgapped.yaml` policy (`allow_network: false`). This makes any attempt to acquire an artifact via URL or perform a VirusTotal lookup a hard error (exit 99). Only offline bundle verification is supported.
+**Mitigation:** Use `airgapped.yaml` policy (`allow_network: false`). This makes any attempt to acquire an artifact via URL a hard error (exit 99); the reputation stage does not attempt a VirusTotal lookup and instead skips gracefully with an `Unknown` status recorded in the report. Only offline bundle verification is supported.
 
 **Residual Risk:** If the bundle itself is created with a compromised signing key, offline bundle verification cannot detect malicious content beyond what ClamAV and static inspection reveal.
 
