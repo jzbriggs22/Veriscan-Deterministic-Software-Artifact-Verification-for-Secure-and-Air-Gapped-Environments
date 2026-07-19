@@ -9,3 +9,7 @@ build/
 venv/
 *.db
 *.sqlite
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
