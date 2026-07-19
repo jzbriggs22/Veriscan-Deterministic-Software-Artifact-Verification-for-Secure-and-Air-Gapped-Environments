@@ -34,6 +34,7 @@ from ..governance.schema import (
     GovernanceStatus,
     NormalMetrics,
 )
+from ..governance.status import compute_status
 from ..ingestion.store import DecisionStore
 
 console = Console()
@@ -313,21 +314,11 @@ class GovernanceDashboard:
         )
 
     def _compute_status(self, drift_results: list[DriftResult]) -> GovernanceStatus:
-        if self._rollback_engine.is_rollback_active():
-            return GovernanceStatus.ROLLBACK_TRIGGERED
-        if any(
-            r.drift_score >= self._config.thresholds_for(r.category).critical_score
-            for r in drift_results
-            if not r.insufficient_data
-        ):
-            return GovernanceStatus.CRITICAL
-        if any(
-            r.drift_score >= self._config.thresholds_for(r.category).warning_score
-            for r in drift_results
-            if not r.insufficient_data
-        ):
-            return GovernanceStatus.DRIFTING
-        return GovernanceStatus.HEALTHY
+        return compute_status(
+            drift_results,
+            self._config,
+            self._rollback_engine.is_rollback_active(),
+        )
 
     def _build_full_layout(self):
         """For live mode: returns a renderable."""

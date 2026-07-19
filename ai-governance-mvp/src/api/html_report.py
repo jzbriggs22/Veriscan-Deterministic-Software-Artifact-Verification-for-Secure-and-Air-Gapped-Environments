@@ -23,6 +23,7 @@ from ..engine.alerts import AlertEngine
 from ..engine.rollback import RollbackEngine
 from ..governance.config import GovernanceConfig
 from ..governance.schema import AlertSeverity, CaseCategory, GovernanceStatus
+from ..governance.status import compute_status
 from ..ingestion.store import DecisionStore
 
 _CSS = """
@@ -88,10 +89,10 @@ def _status_class(status: GovernanceStatus) -> str:
     }.get(status, "status-unknown")
 
 
-def _drift_fill_class(score: float) -> str:
-    if score >= 0.7:
+def _drift_fill_class(score: float, warning: float, critical: float) -> str:
+    if score >= critical:
         return "drift-high"
-    if score >= 0.4:
+    if score >= warning:
         return "drift-med"
     return "drift-low"
 
@@ -100,10 +101,10 @@ def _pct(v: float) -> str:
     return f"{v * 100:.1f}%"
 
 
-def _score_label(score: float) -> str:
-    if score >= 0.7:
+def _score_label(score: float, warning: float, critical: float) -> str:
+    if score >= critical:
         return "CRITICAL"
-    if score >= 0.4:
+    if score >= warning:
         return "WARNING"
     return "OK"
 
@@ -128,15 +129,9 @@ def build_html_report(
     total_decisions = store.total_count()
     counts_by_cat = store.count_by_category()
 
-    # Derive overall status
-    if active_rollback:
-        overall_status = GovernanceStatus.ROLLBACK_TRIGGERED
-    elif any(r.drift_score >= 0.7 for r in drift_results if not r.insufficient_data and r.is_high_risk):
-        overall_status = GovernanceStatus.CRITICAL
-    elif any(r.drift_score >= 0.4 for r in drift_results if not r.insufficient_data):
-        overall_status = GovernanceStatus.DRIFTING
-    else:
-        overall_status = GovernanceStatus.HEALTHY
+    overall_status = compute_status(
+        drift_results, config, rollback_active=active_rollback is not None
+    )
 
     # ── Normal metrics ─────────────────────────────────────────────────────────
     recent = store.get_all_recent(limit=500)
@@ -226,8 +221,13 @@ def build_html_report(
 </tr>""")
                 continue
             bar_width = int(r.drift_score * 100)
-            fill_cls = _drift_fill_class(r.drift_score)
-            label = _score_label(r.drift_score)
+            thresholds = config.thresholds_for(r.category)
+            fill_cls = _drift_fill_class(
+                r.drift_score, thresholds.warning_score, thresholds.critical_score
+            )
+            label = _score_label(
+                r.drift_score, thresholds.warning_score, thresholds.critical_score
+            )
             sev_cls = "badge-critical" if label == "CRITICAL" else (
                 "badge-warning" if label == "WARNING" else "badge-info"
             )

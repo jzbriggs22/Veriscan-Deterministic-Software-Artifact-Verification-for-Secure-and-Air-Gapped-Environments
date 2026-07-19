@@ -391,7 +391,7 @@ class TestGovernanceStatusDrifting:
         resp = tc.get("/governance/status")
         assert resp.status_code == 200
         body = resp.json()
-        assert body["status"] in ("drifting", "critical", "rollback_active")
+        assert body["status"] in ("drifting", "critical", "rollback_triggered")
         assert body["active_alert_count"] >= 1
 
     def test_status_critical_when_critical_alert_active(self):
@@ -407,7 +407,7 @@ class TestGovernanceStatusDrifting:
         resp = tc.get("/governance/status")
         assert resp.status_code == 200
         body = resp.json()
-        assert body["status"] in ("critical", "rollback_active")
+        assert body["status"] in ("critical", "rollback_triggered")
 
 
 # ── src/api/app.py — alerts endpoint with active_only=False ──────────────────

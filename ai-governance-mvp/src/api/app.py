@@ -18,10 +18,12 @@ from ..governance.schema import (
     AgentDecision,
     CaseCategory,
     DecisionOutcome,
+    GovernanceStatus,
 )
 from ..ingestion.ingestor import DecisionIngestor
 from ..ingestion.store import DecisionStore
 from ..governance.preflight import PreflightValidator
+from ..governance.status import compute_status
 from .html_report import build_html_report
 from .models import (
     AgentVersionSummaryOut,
@@ -300,6 +302,7 @@ def ingest_batch(
 @app.get("/governance/report", response_model=GovernanceReportOut, tags=["Governance"])
 def get_governance_report(
     store: DecisionStore = Depends(get_store),
+    config: GovernanceConfig = Depends(get_config),
     detector: DriftDetector = Depends(get_detector),
     alert_engine: AlertEngine = Depends(get_alert_engine),
     rollback_engine: RollbackEngine = Depends(get_rollback_engine),
@@ -314,15 +317,9 @@ def get_governance_report(
     store.store_drift_results_batch(drift_results)
     active_rollback = store.get_active_rollback()
 
-    status_val = "healthy"
-    for r in drift_results:
-        if r.insufficient_data:
-            continue
-        if r.drift_score >= 0.70:
-            status_val = "critical"
-            break
-        if r.drift_score >= 0.40:
-            status_val = "drifting"
+    status_val = compute_status(
+        drift_results, config, rollback_active=active_rollback is not None
+    ).value
 
     # Enrich each result with trend from stored history
     enriched = []
@@ -376,14 +373,16 @@ def get_governance_status(
     active_alerts = alert_engine.get_active_alerts()
     rollback_active = rollback_engine.is_rollback_active()
 
+    # Derived from active alerts (not a fresh detection pass) so the probe
+    # stays cheap, but the vocabulary is the shared GovernanceStatus enum.
     if rollback_active:
-        status_val = "rollback_active"
+        status_val = GovernanceStatus.ROLLBACK_TRIGGERED.value
     elif any(a.severity.value == "critical" for a in active_alerts):
-        status_val = "critical"
+        status_val = GovernanceStatus.CRITICAL.value
     elif active_alerts:
-        status_val = "drifting"
+        status_val = GovernanceStatus.DRIFTING.value
     else:
-        status_val = "healthy"
+        status_val = GovernanceStatus.HEALTHY.value
 
     return GovernanceStatusOut(
         status=status_val,

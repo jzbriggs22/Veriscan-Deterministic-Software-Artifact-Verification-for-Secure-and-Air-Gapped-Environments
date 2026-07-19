@@ -516,18 +516,18 @@ class TestHtmlReportCoverage:
     def test_high_drift_score_renders_drift_high_class(self):
         """drift_score >= 0.7 → drift-high CSS class applied."""
         from src.api.html_report import _drift_fill_class, _score_label
-        assert _drift_fill_class(0.8) == "drift-high"
-        assert _score_label(0.8) == "CRITICAL"
+        assert _drift_fill_class(0.8, 0.4, 0.7) == "drift-high"
+        assert _score_label(0.8, 0.4, 0.7) == "CRITICAL"
 
     def test_medium_drift_score_class(self):
         from src.api.html_report import _drift_fill_class, _score_label
-        assert _drift_fill_class(0.5) == "drift-med"
-        assert _score_label(0.5) == "WARNING"
+        assert _drift_fill_class(0.5, 0.4, 0.7) == "drift-med"
+        assert _score_label(0.5, 0.4, 0.7) == "WARNING"
 
     def test_low_drift_score_class(self):
         from src.api.html_report import _drift_fill_class, _score_label
-        assert _drift_fill_class(0.2) == "drift-low"
-        assert _score_label(0.2) == "OK"
+        assert _drift_fill_class(0.2, 0.4, 0.7) == "drift-low"
+        assert _score_label(0.2, 0.4, 0.7) == "OK"
 
     def test_status_class_all_variants(self):
         from src.api.html_report import _status_class
