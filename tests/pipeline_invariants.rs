@@ -352,3 +352,55 @@ async fn test_exit_code_mapping() {
         20
     );
 }
+
+#[tokio::test]
+async fn test_adjacent_appended_lowercase_checksum_discovered() {
+    // Bundle creation and the demo tooling write `<full filename>.sha256`
+    // (e.g. `artifact.tar.gz.sha256`). The hash stage must discover that form.
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let artifact_path = dir.path().join("artifact.tar.gz");
+    std::fs::write(&artifact_path, b"appended checksum discovery test").expect("write artifact");
+
+    let policy = default_policy();
+    let baseline = hash::run(&artifact_path, &policy, None, None)
+        .await
+        .expect("hash stage baseline");
+
+    std::fs::write(
+        dir.path().join("artifact.tar.gz.sha256"),
+        &baseline.sha256,
+    )
+    .expect("write adjacent checksum");
+
+    let result = hash::run(&artifact_path, &policy, None, None)
+        .await
+        .expect("hash stage with adjacent checksum");
+
+    assert_eq!(
+        result.expected_sha256_matched,
+        Some(true),
+        "appended-lowercase .sha256 file must be discovered and verified"
+    );
+}
+
+#[tokio::test]
+async fn test_adjacent_appended_checksum_mismatch_is_detected() {
+    // A discovered-but-wrong adjacent checksum must fail the stage, proving
+    // the appended-lowercase form is actually read rather than ignored.
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let artifact_path = dir.path().join("artifact.tar.gz");
+    std::fs::write(&artifact_path, b"appended checksum tamper test").expect("write artifact");
+    std::fs::write(
+        dir.path().join("artifact.tar.gz.sha256"),
+        "0".repeat(64),
+    )
+    .expect("write bogus checksum");
+
+    let policy = default_policy();
+    let result = hash::run(&artifact_path, &policy, None, None).await;
+
+    assert!(
+        result.is_err(),
+        "mismatched adjacent .sha256 must fail the hash stage"
+    );
+}

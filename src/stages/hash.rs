@@ -176,6 +176,9 @@ fn resolve_expected_checksum(
 
     // Check for adjacent checksum files.
     let candidates = [
+        // Appended lowercase form (`artifact.tar.gz.sha256`) — the convention
+        // used by bundle creation and the demo tooling.
+        Some(format!("{}.{}", artifact_path.display(), algorithm)),
         artifact_path
             .with_extension(algorithm)
             .to_str()

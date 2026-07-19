@@ -196,7 +196,13 @@ pub async fn run_bundle_pipeline(
     let offline_config = RunConfig {
         offline_mode: true,
         trusted_keys_dir: Some(bundle_dir.join("trusted_keys")),
-        detached_sig_path: Some(artifact_path.with_extension("sig")),
+        // Bundle creation appends ".sig" to the full artifact filename
+        // (e.g. `artifact.tar.gz.sig`), so look it up the same way rather
+        // than replacing the last extension.
+        detached_sig_path: Some(std::path::PathBuf::from(format!(
+            "{}.sig",
+            artifact_path.display()
+        ))),
         ..config.clone()
     };
 
