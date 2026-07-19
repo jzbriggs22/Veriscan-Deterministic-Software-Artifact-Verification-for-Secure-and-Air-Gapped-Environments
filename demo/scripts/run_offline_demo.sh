@@ -48,9 +48,9 @@ separator "Offline Scenario 1: VERIFIED — Valid offline bundle"
     --report-md  "${OUT_DIR}/offline_scenario1_verified.md" \
     /dev/null && EXITCODE=0 || EXITCODE=$?   # Source arg unused in offline mode
 echo "Exit code: ${EXITCODE}"
-( [ "${EXITCODE}" -eq 0 ] || [ "${EXITCODE}" -eq 10 ] ) \
-    && echo "✅ PASS: Offline bundle verified" \
-    || echo "ℹ️  INFO: Exit ${EXITCODE} (may be UNVERIFIED if no scanner)"
+( [ "${EXITCODE}" -eq 0 ] || [ "${EXITCODE}" -eq 20 ] ) \
+    && echo "✅ PASS: Offline bundle verified (20 = FAILED: airgapped policy requires a malware scanner; install ClamAV for exit 0)" \
+    || echo "❌ FAIL: Expected exit 0 (ClamAV present) or 20 (no scanner), got ${EXITCODE}"
 
 # ── Scenario 2: FAILED — Tampered artifact in bundle ─────────────────────
 
@@ -71,9 +71,9 @@ echo "TAMPERED" >> "${TAMPERED_BUNDLE}/demo_artifact.tar.gz"
     --report-md  "${OUT_DIR}/offline_scenario2_tampered.md" \
     /dev/null && EXITCODE=0 || EXITCODE=$?
 echo "Exit code: ${EXITCODE}"
-[ "${EXITCODE}" -eq 20 ] \
-    && echo "✅ PASS: Tampered artifact detected (exit 20)" \
-    || echo "❌ FAIL: Expected exit 20, got ${EXITCODE}"
+[ "${EXITCODE}" -eq 99 ] \
+    && echo "✅ PASS: Tampered artifact detected (exit 99: bundle integrity error)" \
+    || echo "❌ FAIL: Expected exit 99, got ${EXITCODE}"
 
 # ── Scenario 3: FAILED — Tampered manifest ───────────────────────────────
 
@@ -93,9 +93,9 @@ echo '{"injected": "tampered entry"}' >> "${TAMPERED_MANIFEST_BUNDLE}/bundle.man
     --report-md  "${OUT_DIR}/offline_scenario3_tampered_manifest.md" \
     /dev/null && EXITCODE=0 || EXITCODE=$?
 echo "Exit code: ${EXITCODE}"
-[ "${EXITCODE}" -eq 20 ] \
-    && echo "✅ PASS: Tampered manifest detected (exit 20)" \
-    || echo "❌ FAIL: Expected exit 20, got ${EXITCODE}"
+[ "${EXITCODE}" -eq 99 ] \
+    && echo "✅ PASS: Tampered manifest detected (exit 99: bundle integrity error)" \
+    || echo "❌ FAIL: Expected exit 99, got ${EXITCODE}"
 
 # ── Scenario 4: FAILED — Missing manifest signature ──────────────────────
 
@@ -113,9 +113,9 @@ rm -f "${NO_SIG_BUNDLE}/bundle.manifest.sig"
     --report-md  "${OUT_DIR}/offline_scenario4_no_sig.md" \
     /dev/null && EXITCODE=0 || EXITCODE=$?
 echo "Exit code: ${EXITCODE}"
-[ "${EXITCODE}" -eq 20 ] \
-    && echo "✅ PASS: Missing signature detected (exit 20)" \
-    || echo "❌ FAIL: Expected exit 20, got ${EXITCODE}"
+[ "${EXITCODE}" -eq 99 ] \
+    && echo "✅ PASS: Missing signature detected (exit 99: bundle integrity error)" \
+    || echo "❌ FAIL: Expected exit 99, got ${EXITCODE}"
 
 separator "Offline demo complete"
 echo "Reports written to: ${OUT_DIR}/"

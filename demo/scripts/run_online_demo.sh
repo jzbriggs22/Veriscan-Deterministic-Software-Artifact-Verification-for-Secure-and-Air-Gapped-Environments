@@ -4,7 +4,7 @@
 # Scenarios:
 #   1. VERIFIED:   Signed artifact with valid checksums
 #   2. FAILED:     Tampered artifact (hash mismatch)
-#   3. UNVERIFIED: Unsigned artifact under strict policy
+#   3. UNVERIFIED/FAILED: Unsigned artifact under strict policy (exit 10 or 20)
 #   4. FAILED:     Malware simulation (EICAR)
 #
 # Reports are written to demo/out/.

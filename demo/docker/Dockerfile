@@ -10,7 +10,7 @@
 # Run:   docker run --rm -it -v $(pwd)/demo/out:/demo/out veriscan-demo
 
 # ── Stage 1: Builder ────────────────────────────────────────────────────────
-FROM rust:1.82-bookworm AS builder
+FROM rust:1.86-bookworm AS builder
 
 WORKDIR /build
 

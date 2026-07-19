@@ -323,3 +323,21 @@ fn test_report_contains_no_sensitive_fields() {
     assert!(!json.contains("password"), "Password must not appear in report");
     assert!(!json.contains("secret"), "Secret must not appear in report");
 }
+
+#[test]
+fn test_append_audit_jsonl_accumulates_one_record_per_run() {
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let log_path = dir.path().join("audit.jsonl");
+
+    let report = build_test_report(VerificationStatus::Verified);
+    veriscan_lib::report::append_audit_jsonl(&report, &log_path).expect("first append");
+    veriscan_lib::report::append_audit_jsonl(&report, &log_path).expect("second append");
+
+    let contents = std::fs::read_to_string(&log_path).expect("read audit log");
+    let lines: Vec<&str> = contents.lines().collect();
+    assert_eq!(lines.len(), 2, "one JSONL record per verification run");
+    for line in lines {
+        let parsed: serde_json::Value = serde_json::from_str(line).expect("valid JSON line");
+        assert_eq!(parsed["verdict"]["status"], "VERIFIED");
+    }
+}

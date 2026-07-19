@@ -1,7 +1,8 @@
 # Veriscan Contractor-Strict Policy
 # ===================================
 # High-assurance policy for defense contractor environments.
-# All checks are required; any failure or unavailability is fatal.
+# Signatures and checksums are required and fatal on failure. Reputation and
+# malware scans are required but tool unavailability is non-fatal (flagged).
 # Unsigned executables are blocked. Signer must be in the allowlist.
 
 name: "contractor_strict"
@@ -20,11 +21,11 @@ require_checksums: true
 # SBOM (Phase II hook)
 require_sbom: false
 
-# Reputation: required and fatal if unavailable
+# Reputation: required; lookup failure is non-fatal (flagged)
 reputation_required: true
 reputation_failure_is_fatal: false  # Non-fatal: VT may be blocked in some envs
 
-# Malware: required and fatal if unavailable
+# Malware: scan required; scanner unavailability is non-fatal (flagged)
 malware_scan_required: true
 malware_failure_is_fatal: false  # Non-fatal: scanner may not be installed
 

@@ -245,6 +245,12 @@ async fn run(cli: Cli) -> i32 {
                     Err(e) => error!(error = %e, "Failed to write Markdown report"),
                 }
             }
+            if let Some(path) = &config.audit_log_path {
+                match report::append_audit_jsonl(&json_report, path) {
+                    Ok(_) => info!(path = %path.display(), "Audit record appended"),
+                    Err(e) => error!(error = %e, "Failed to append audit record"),
+                }
+            }
             if print_report {
                 match serde_json::to_string_pretty(&json_report) {
                     Ok(s) => println!("{}", s),

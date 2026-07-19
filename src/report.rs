@@ -486,3 +486,26 @@ pub fn write_markdown(report: &JsonReport, path: &Path) -> Result<(), crate::err
     let md = render_markdown(report);
     crate::util::fs::write_bytes_atomic(path, md.as_bytes())
 }
+
+/// Append the report to an audit log as a single JSON line (JSONL).
+///
+/// One record per verification run; the file is created if absent and never
+/// truncated, so it accumulates an append-only audit trail across runs.
+pub fn append_audit_jsonl(report: &JsonReport, path: &Path) -> Result<(), crate::error::VeriError> {
+    use std::io::Write;
+
+    let json = serde_json::to_string(report)
+        .map_err(|e| crate::error::VeriError::Internal(e.to_string()))?;
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .map_err(|e| crate::error::VeriError::Io {
+            path: path.display().to_string(),
+            source: e,
+        })?;
+    writeln!(file, "{}", json).map_err(|e| crate::error::VeriError::Io {
+        path: path.display().to_string(),
+        source: e,
+    })
+}

@@ -129,7 +129,7 @@ pub struct Policy {
 }
 
 fn default_entropy_threshold() -> f64 {
-    7.2
+    7.5
 }
 fn default_vt_env() -> String {
     "VT_API_KEY".to_string()

@@ -26,11 +26,11 @@ require_checksums: true
 # SBOM (Phase II hook)
 require_sbom: false
 
-# Reputation: required; unavailability is non-fatal (CI may run without VT)
+# Reputation: optional — not required in CI (runners may have no VT access)
 reputation_required: false
 reputation_failure_is_fatal: false
 
-# Malware: required if scanner available; non-fatal if absent (CI may lack scanner)
+# Malware: optional — not required in CI (runners may lack a scanner)
 malware_scan_required: false
 malware_failure_is_fatal: false
 
