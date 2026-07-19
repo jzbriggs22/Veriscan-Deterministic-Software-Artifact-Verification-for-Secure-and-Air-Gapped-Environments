@@ -4,8 +4,9 @@ Behavioral regression tests — governance gate.
 These 50 fixed decisions constitute the governance regression suite.
 Rules:
   - Every commit must pass this suite (mark: behavioral).
-  - If ANY behavioral test fails in CI, the rollback conftest hook fires a
-    RollbackEvent into the session store (see conftest_behavioral fixture).
+  - If ANY behavioral test fails in CI, the rollback gate fires a
+    RollbackEvent into the session store (implemented as the
+    pytest_runtest_logreport / pytest_sessionfinish hooks in conftest.py).
   - The fixture dataset is immutable; changing it requires a deliberate version bump.
 
 Test structure:

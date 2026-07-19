@@ -133,7 +133,7 @@ Acquire → Hash → Signature → Malware → Inspect → Reputation → Policy
 6. **Reputation** — VirusTotal hash-only lookup (cached, never uploads)
 7. **Policy** — Decision matrix evaluation → typed verdict
 
-Stages cannot be reordered, skipped, or bypassed by CLI flags. Artifact hash is verified before and after each stage to detect in-pipeline mutation.
+Stages cannot be reordered, skipped, or bypassed by CLI flags. The artifact hash is re-verified after each stage that touches artifact content (hash, signature, malware, inspect) to detect in-pipeline mutation; a mismatch aborts the run with exit 99.
 
 ---
 
@@ -254,11 +254,11 @@ cargo build --release
 cargo test
 
 # Demo environment (requires Docker)
-cd demo && docker-compose up
+docker compose -f demo/docker/docker-compose.yml up
 ```
 
 **System requirements:**
-- Rust 1.70+
+- Rust 1.86 (pinned via `rust-toolchain.toml`; rustup installs it automatically)
 - No C library dependencies (uses pure-Rust crypto backend)
 - Optional: ClamAV (`clamscan`) for malware scanning
 
@@ -279,6 +279,18 @@ cd demo && docker-compose up
 | [docs/demo_guide.md](docs/demo_guide.md) | Step-by-step demo instructions |
 | [docs/controls/nist_800_53_rev5.md](docs/controls/nist_800_53_rev5.md) | NIST SP 800-53 Rev5 control mapping |
 | [docs/controls/nist_800_161.md](docs/controls/nist_800_161.md) | NIST SP 800-161 SCRM mapping |
+
+---
+
+## Companion Project: AI Agent Governance MVP
+
+The [`ai-governance-mvp/`](ai-governance-mvp/) directory contains a separate,
+self-contained Python project: an observability and governance layer for AI
+support agents that detects behavioral drift on high-risk case categories
+(billing disputes, fraud claims, policy-sensitive issues) before it causes
+damage, with alerting, an automatic rollback gate, and a PM-facing dashboard.
+It shares this repository but has no code dependency on `veriscan`. See
+[ai-governance-mvp/README.md](ai-governance-mvp/README.md) for setup and usage.
 
 ---
 

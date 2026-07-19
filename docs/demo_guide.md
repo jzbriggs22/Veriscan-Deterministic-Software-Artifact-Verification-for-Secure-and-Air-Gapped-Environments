@@ -10,10 +10,10 @@
 
 ### Required
 
-- **Rust 1.70+** — Install via [rustup.rs](https://rustup.rs)
+- **Rust 1.86** — pinned via `rust-toolchain.toml`; rustup installs it automatically. Install rustup via [rustup.rs](https://rustup.rs)
   ```bash
   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-  rustc --version   # should be 1.70.0 or higher
+  rustc --version   # rustup selects 1.86 from rust-toolchain.toml
   ```
 
 - **GnuPG (gpg)** — Used to generate signing keys for demo fixtures.
@@ -259,10 +259,12 @@ jq '.verdict' demo/out/scenario2_tampered.json
 # { "status": "FAILED", "reason": "Hash mismatch: expected '3a7bd...' got 'f1e2...'", "exit_code": 20 }
 
 jq '.hashes' demo/out/scenario2_tampered.json
-# { "sha256": "f1e2d3c4...", "sha512": "...", "sha256_verified": false }
+# { "sha256": null, "sha512": null, "sha256_verified": null, ... }
+# The hash stage aborts before recording its results, so the computed digests
+# appear only in the verdict reason — not in the .hashes block.
 ```
 
-Note that stages after Hash (Signature, Malware, Inspect, Reputation, Policy) do not produce evidence records because the pipeline terminates after a hash mismatch. The `evidence` array will contain records only for `acquire` and `hash`.
+Note that the Hash stage and everything after it (Signature, Malware, Inspect, Reputation, Policy) do not produce evidence records because the pipeline terminates on the hash mismatch. The `evidence` array will contain a record only for `acquire`.
 
 ---
 
@@ -430,7 +432,7 @@ demo/fixtures/good/bundle/
     --report-md  demo/out/offline_verified.md \
     /dev/null   # source arg required but unused in --offline mode
 
-echo "Exit code: $?"   # Expected: 0 (VERIFIED) or 10 (UNVERIFIED if no ClamAV)
+echo "Exit code: $?"   # Expected: 0 (VERIFIED, ClamAV present) or 20 (FAILED — airgapped policy requires a malware scanner)
 ```
 
 ### Scenario 5b: FAILED — Tampered Artifact in Bundle
@@ -445,10 +447,10 @@ echo "INJECTED MALICIOUS CONTENT" >> /tmp/tampered_bundle/demo_artifact.tar.gz
     --offline /tmp/tampered_bundle \
     /dev/null || true
 
-echo "Exit code: $?"   # Expected: 20 (manifest hash mismatch detected)
+echo "Exit code: $?"   # Expected: 99 (bundle integrity error — file hash mismatch vs manifest)
 ```
 
-The bundle verifier detects the tampered artifact because its SHA-256 no longer matches the value in `bundle.manifest.json`.
+The bundle verifier detects the tampered artifact because its SHA-256 no longer matches the value in `bundle.manifest.json`; like all bundle-integrity failures, this aborts the run with exit 99 before the artifact pipeline starts.
 
 ### Scenario 5c: FAILED — Tampered Bundle Manifest
 
@@ -632,10 +634,11 @@ docker run --rm -it \
 ### Docker Demo Entrypoint
 
 The container entrypoint (`demo/docker/entrypoint.sh`) runs:
-1. `make_bundle.sh` — generates all demo fixtures with fresh GPG keys.
+1. `make_bundle.sh --keys-only` — generates demo GPG keys if absent.
 2. `run_online_demo.sh` — runs Scenarios 1–4.
 3. `run_offline_demo.sh` — runs Scenarios 5a–5d.
-4. `generate_reports.sh` — formats and summarizes all report outputs.
+4. `validate_ci_gate.sh` — exercises the CI gate policy.
+5. `generate_reports.sh` — formats and summarizes all report outputs.
 
 ### Docker Compose
 
@@ -660,14 +663,14 @@ jq '.verdict' demo/out/scenario1_verified.json
 | 3: Unsigned (default) | default | No signature | VERIFIED or UNVERIFIED | 0 or 10 |
 | 4: EICAR (ClamAV present) | default | Malware detected | FAILED | 20 |
 | 4: EICAR (no ClamAV) | default | Scanner unavailable | UNVERIFIED | 10 |
-| 5a: Valid bundle | airgapped | Bundle intact | VERIFIED or UNVERIFIED | 0 or 10 |
-| 5b: Tampered artifact | airgapped | File hash mismatch in manifest | FAILED | 20 |
+| 5a: Valid bundle | airgapped | Bundle intact | VERIFIED (or FAILED without ClamAV) | 0 or 20 |
+| 5b: Tampered artifact | airgapped | File hash mismatch in manifest | Bundle integrity error | 99 |
 | 5c: Tampered manifest | airgapped | Manifest sig invalid | FAILED | 99 |
 | 5d: Missing manifest sig | airgapped | Manifest sig missing | FAILED | 99 |
 
 Notes:
 - Scenarios producing UNVERIFIED (exit 10) indicate incomplete verification, typically due to ClamAV or VirusTotal being unavailable. Whether UNVERIFIED is acceptable depends on the deployment policy.
-- Scenarios 5c and 5d produce exit code 99 (tool error) because bundle verification failure is treated as a pipeline error rather than a policy verdict. The artifact is never trusted when the bundle manifest signature fails.
+- Scenarios 5b, 5c, and 5d produce exit code 99 (tool error) because any bundle verification failure is treated as a pipeline error rather than a policy verdict. The artifact is never trusted when the bundle manifest signature fails.
 - Exit code 10 may become 0 (VERIFIED) if `malware_failure_is_fatal: false` and `reputation_required: false` are set in the policy, which is the default configuration.
 
 ---
@@ -688,7 +691,7 @@ The `require_checksums: true` policy flag is set but no expected checksum was pr
 
 ### "Network access denied by policy"
 
-The `airgapped.yaml` policy (`allow_network: false`) rejected a URL source or a reputation lookup. Use `--offline` mode with a bundle, or switch to a policy that permits network access.
+The `airgapped.yaml` policy (`allow_network: false`) rejected a URL source. (Reputation lookups are not errors — with networking disabled the reputation stage skips gracefully and reports `Unknown`.) Use `--offline` mode with a bundle, or switch to a policy that permits network access.
 
 ### Exit Code 99 (Tool Error)
 
