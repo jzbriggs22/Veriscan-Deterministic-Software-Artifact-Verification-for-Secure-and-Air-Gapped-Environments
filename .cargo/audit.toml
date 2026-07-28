@@ -1,0 +1,17 @@
+# cargo-audit configuration.
+#
+# The CI audit step is BLOCKING: any new advisory fails the build unless it
+# is explicitly ignored here with a written justification. Revisit ignored
+# advisories whenever the dependency tree changes.
+
+[advisories]
+ignore = [
+    # RUSTSEC-2023-0071 — rsa: "Marvin Attack" timing sidechannel.
+    # No patched release exists (the advisory lists no fixed version).
+    # Pulled in via sequoia-openpgp. Exploitation requires an attacker who
+    # can repeatedly measure private-key operation timings (a network
+    # timing oracle). veriscan is a one-shot local CLI: signature
+    # verification uses public keys only, and bundle signing is a single
+    # local operation with no attacker-observable timing channel.
+    "RUSTSEC-2023-0071",
+]

@@ -38,12 +38,13 @@ jobs:
       - name: Tests
         run: cargo test
 
-      # Advisory for now: the lockfile has not been audited historically,
-      # so a pre-existing advisory must not block unrelated changes.
+      # Blocking: the lockfile is audited; the only unpatchable advisory
+      # (RUSTSEC-2023-0071) is ignored with justification in .cargo/audit.toml.
+      # cargo-audit is pinned to 0.22.1 — 0.22.2+ requires rustc 1.88, newer
+      # than the 1.86 toolchain pinned by rust-toolchain.toml.
       - name: Dependency audit
-        continue-on-error: true
         run: |
-          cargo install cargo-audit --locked
+          cargo install cargo-audit --locked --version 0.22.1
           cargo audit
 
   python:

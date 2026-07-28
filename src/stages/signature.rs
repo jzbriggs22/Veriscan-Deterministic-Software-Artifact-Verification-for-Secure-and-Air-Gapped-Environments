@@ -10,7 +10,6 @@ use crate::config::Policy;
 use crate::error::VeriError;
 use crate::evidence::{EvidenceItem, SignatureResult};
 use sequoia_openpgp::{
-    cert::prelude::*,
     parse::{
         stream::{
             DetachedVerifierBuilder, GoodChecksum, MessageLayer, MessageStructure,
@@ -237,7 +236,7 @@ impl VerificationHelper for SigHelper {
             .iter()
             .filter(|cert| {
                 ids.iter()
-                    .any(|id| cert.keys().any(|k| k.key_handle().aliases(id)))
+                    .any(|id| cert.keys().any(|k| k.key().key_handle().aliases(id)))
             })
             .cloned()
             .collect();
@@ -257,7 +256,7 @@ impl VerificationHelper for SigHelper {
                                 .cert()
                                 .userids()
                                 .next()
-                                .map(|u| String::from_utf8_lossy(u.value()).to_string())
+                                .map(|u| String::from_utf8_lossy(u.userid().value()).to_string())
                                 .unwrap_or_else(|| "<no uid>".to_string());
                             self.verified_fp = Some(fp);
                             self.verified_uid = Some(uid);

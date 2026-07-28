@@ -238,7 +238,7 @@ See `docs/controls/nist_800_161.md` for the dedicated NIST SP 800-161 Rev 1 SCRM
 - veriscan is written in Rust, a memory-safe language by default.
 - The release profile enables LTO, single codegen unit, and symbol stripping.
 - No `unsafe` blocks in security-critical code paths.
-- Dependencies are pinned and audited with `cargo audit`; the bundled CI workflow (`.github/workflows/ci.yml`) enforces formatting, lint (warnings denied), and the full Rust and Python test suites on every push and pull request, with an advisory `cargo audit` pass.
+- Dependencies are pinned and audited with `cargo audit`; the bundled CI workflow (`.github/workflows/ci.yml`) enforces formatting, lint (warnings denied), and the full Rust and Python test suites on every push and pull request, with a blocking `cargo audit` pass (unfixable advisories require a justified ignore entry in `.cargo/audit.toml`).
 - The test suite includes pipeline invariant tests (`tests/pipeline_invariants.rs`), policy decision tests (`tests/policy_decisions.rs`), and offline bundle tests (`tests/offline_bundle.rs`).
 
 ---
