@@ -1,0 +1,107 @@
+# Veriscan Contractor-Strict Policy
+# ===================================
+# High-assurance policy for defense contractor environments.
+# Signatures and checksums are required and fatal on failure. Reputation and
+# malware scans are required but tool unavailability is non-fatal (flagged).
+# Unsigned executables are blocked. Signer must be in the allowlist.
+
+name: "contractor_strict"
+version: "1.0"
+
+# Signature: mandatory
+require_signature: true
+
+# Network: permitted (for reputation)
+allow_network: true
+
+# Checksums: required
+require_checksums: true
+
+# SBOM (Phase II hook)
+require_sbom: false
+
+# Reputation: required; lookup failure is non-fatal (flagged)
+reputation_required: true
+reputation_failure_is_fatal: false  # Non-fatal: VT may be blocked in some envs
+
+# Malware: scan required; scanner unavailability is non-fatal (flagged)
+malware_scan_required: true
+malware_failure_is_fatal: false  # Non-fatal: scanner may not be installed
+
+# File type controls
+deny_file_types: []
+
+# Signer allowlist: MUST be populated before deployment.
+# Leave empty to skip fingerprint pinning (still requires valid signature).
+allow_signers: []
+
+# Entropy threshold (bits/byte, 0.0–8.0).
+# 7.0 flags most packed/encrypted binaries; tighter than default to match
+# the higher assurance requirement of defense contractor environments.
+max_entropy_threshold: 7.0
+
+# URL denylist: "http://" blocks all plain-text HTTP downloads.
+# Add additional patterns (domains, paths) as threat intelligence warrants.
+url_patterns_denylist:
+  - "http://"  # Require HTTPS for all downloads
+
+# Unsigned executables are blocked; only PGP-verified binaries may proceed.
+executable_handling: "block_unsigned"
+
+# Standard CI/CD-compatible timeouts.
+network_timeout_seconds: 30
+subprocess_timeout_seconds: 120
+# 64 KiB cap prevents OOM from attacker-controlled scanner output.
+max_subprocess_output_bytes: 65536  # 64 KiB
+
+# Broader string extraction for higher-assurance inspection.
+max_inspection_strings: 2000
+min_string_length: 6
+entropy_sample_bytes: 1048576  # 1 MiB
+
+# Reputation cache — shorter TTL for more frequent VT freshness checks.
+vt_api_key_env: "VT_API_KEY"
+reputation_cache_dir: "/var/cache/veriscan/reputation"
+reputation_cache_ttl_seconds: 3600  # 1 hour; adjust to VT API rate limits
+
+# Decision matrix
+decision_matrix:
+  - description: "Malware detected"
+    condition:
+      type: "malware_detected"
+    verdict: "failed"
+
+  - description: "Reputation: artifact flagged as malicious"
+    condition:
+      type: "reputation_malicious"
+    verdict: "failed"
+
+  - description: "Checksum mismatch"
+    condition:
+      type: "checksum_mismatch"
+    verdict: "failed"
+
+  - description: "Signer not in allowlist"
+    condition:
+      type: "signer_not_allowed"
+    verdict: "failed"
+
+  - description: "Signature invalid"
+    condition:
+      type: "signature_invalid"
+    verdict: "failed"
+
+  - description: "Signature missing (required)"
+    condition:
+      type: "signature_missing"
+    verdict: "failed"
+
+  - description: "File type denied"
+    condition:
+      type: "denied_file_type"
+    verdict: "failed"
+
+  - description: "High entropy: artifact may be packed or encrypted"
+    condition:
+      type: "high_entropy"
+    verdict: "unverified"

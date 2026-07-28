@@ -1,0 +1,112 @@
+# Veriscan CI/CD Gate Policy
+# ============================
+# Strict gating policy for automated CI/CD pipelines.
+# Unsigned release artifacts are blocked.
+# Checksums and signatures are required.
+# Produces machine-readable exit codes for pipeline integration.
+#
+# Exit codes:
+#   0  = VERIFIED   (pipeline continues)
+#   10 = UNVERIFIED (pipeline should warn and may block)
+#   20 = FAILED     (pipeline must block)
+
+name: "ci_gate"
+version: "1.0"
+
+# Signature: required for release artifacts
+require_signature: true
+
+# Network: permitted in CI environments
+allow_network: true
+
+# Checksums: required in CI
+require_checksums: true
+
+# SBOM (Phase II hook)
+require_sbom: false
+
+# Reputation: optional — not required in CI (runners may have no VT access)
+reputation_required: false
+reputation_failure_is_fatal: false
+
+# Malware: optional — not required in CI (runners may lack a scanner)
+malware_scan_required: false
+malware_failure_is_fatal: false
+
+# File type controls: block obviously dangerous types in CI artifacts
+deny_file_types: []
+
+# Signer allowlist: empty = any valid signer accepted
+# Populate this with your CI signing key fingerprint for hardened pipelines.
+allow_signers: []
+
+# Entropy threshold (bits/byte, 0.0–8.0).
+# 7.5 (same as default) — CI artifacts should not be highly obfuscated.
+# Lower this to 7.0 if your pipeline ingests compiled release binaries that
+# are not packed/compressed (stripped ELF/PE typically scores ~6.0–6.5).
+max_entropy_threshold: 7.5
+
+# URL denylist: block plain-text HTTP to enforce HTTPS-only artifact sources.
+url_patterns_denylist:
+  - "http://"  # Require HTTPS
+
+# Unsigned executables are blocked at the CI gate.
+executable_handling: "block_unsigned"
+
+# Shorter timeouts optimised for CI responsiveness.
+network_timeout_seconds: 15   # VT API typically responds in < 5s
+subprocess_timeout_seconds: 60
+# 32 KiB cap (lighter than default) — CI environments have tighter memory budgets.
+max_subprocess_output_bytes: 32768  # 32 KiB
+
+# Lighter string extraction for faster CI runs.
+max_inspection_strings: 500
+min_string_length: 8            # Longer minimum reduces noise in CI logs
+entropy_sample_bytes: 524288    # 512 KiB — half the default; sufficient for headers
+
+# Reputation cache — 1-hour TTL balances API quota with freshness in CI.
+vt_api_key_env: "VT_API_KEY"
+reputation_cache_dir: "/tmp/veriscan_ci_reputation_cache"
+reputation_cache_ttl_seconds: 3600  # 1 hour
+
+# Decision matrix
+decision_matrix:
+  - description: "Malware detected — CI pipeline blocked"
+    condition:
+      type: "malware_detected"
+    verdict: "failed"
+
+  - description: "Reputation: artifact flagged as malicious"
+    condition:
+      type: "reputation_malicious"
+    verdict: "failed"
+
+  - description: "Checksum mismatch — artifact integrity compromised"
+    condition:
+      type: "checksum_mismatch"
+    verdict: "failed"
+
+  - description: "Signer not in CI allowlist"
+    condition:
+      type: "signer_not_allowed"
+    verdict: "failed"
+
+  - description: "Signature invalid"
+    condition:
+      type: "signature_invalid"
+    verdict: "failed"
+
+  - description: "Signature missing (CI requires signed artifacts)"
+    condition:
+      type: "signature_missing"
+    verdict: "failed"
+
+  - description: "File type denied by CI policy"
+    condition:
+      type: "denied_file_type"
+    verdict: "failed"
+
+  - description: "High entropy: artifact may be packed (CI warning)"
+    condition:
+      type: "high_entropy"
+    verdict: "unverified"
