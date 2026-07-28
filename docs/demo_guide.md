@@ -424,17 +424,23 @@ demo/fixtures/good/bundle/
 
 ### Scenario 5a: VERIFIED — Valid Bundle
 
+`make_bundle.sh` derives `demo/out/airgapped_pinned.yaml` from
+`policies/airgapped.yaml` with the demo signer's fingerprint pinned in
+`allow_signers`. (The shipped policy keeps an empty allowlist on purpose:
+it fails closed until you pin your own signers.)
+
 ```bash
 ./target/release/veriscan verify \
-    --policy policies/airgapped.yaml \
+    --policy demo/out/airgapped_pinned.yaml \
     --offline demo/fixtures/good/bundle \
     --report-json demo/out/offline_verified.json \
     --report-md  demo/out/offline_verified.md \
     /dev/null   # source arg required but unused in --offline mode
 
-echo "Exit code: $?"   # Expected: 20 — bundle integrity passes, but the shipped airgapped policy fails closed
-                       # (allow_signers is empty, so no signer is pinned; the malware scanner is also required).
-                       # To reach 0 (VERIFIED): add the demo key fingerprint to allow_signers and install ClamAV.
+echo "Exit code: $?"   # Expected: 0 (VERIFIED) with ClamAV installed.
+                       # Without a malware scanner the air-gapped policy still fails closed
+                       # (exit 20, reason "scanner unavailable") even though the pinned
+                       # signature and all checksums verify.
 ```
 
 ### Scenario 5b: FAILED — Tampered Artifact in Bundle
@@ -665,7 +671,7 @@ jq '.verdict' demo/out/scenario1_verified.json
 | 3: Unsigned (default) | default | No signature | VERIFIED or UNVERIFIED | 0 or 10 |
 | 4: EICAR (ClamAV present) | default | Malware detected | FAILED | 20 |
 | 4: EICAR (no ClamAV) | default | Scanner unavailable | UNVERIFIED | 10 |
-| 5a: Valid bundle | airgapped | Bundle intact | FAILED (fail-closed: no pinned signers / no scanner) | 20 |
+| 5a: Valid bundle | airgapped (pinned) | Bundle intact | VERIFIED (with ClamAV); FAILED fail-closed without a scanner | 0 (or 20) |
 | 5b: Tampered artifact | airgapped | File hash mismatch in manifest | Bundle integrity error | 99 |
 | 5c: Tampered manifest | airgapped | Manifest sig invalid | FAILED | 99 |
 | 5d: Missing manifest sig | airgapped | Manifest sig missing | FAILED | 99 |

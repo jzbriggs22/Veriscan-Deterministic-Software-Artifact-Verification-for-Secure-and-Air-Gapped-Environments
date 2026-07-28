@@ -19,9 +19,10 @@ POLICIES_DIR="/policies"
 
 mkdir -p "${OUT_DIR}"
 
-# Ensure fixtures exist.
-if [ ! -d "${FIXTURES_DIR}/good/bundle" ]; then
-    echo "[offline-demo] Bundle not found; running make_bundle.sh..."
+# Ensure fixtures (and the pinned demo policy) exist.
+PINNED_POLICY="${OUT_DIR}/airgapped_pinned.yaml"
+if [ ! -d "${FIXTURES_DIR}/good/bundle" ] || [ ! -f "${PINNED_POLICY}" ]; then
+    echo "[offline-demo] Bundle or pinned policy not found; running make_bundle.sh..."
     bash "${SCRIPT_DIR}/make_bundle.sh"
 fi
 
@@ -38,19 +39,32 @@ separator() {
 BUNDLE_DIR="${FIXTURES_DIR}/good/bundle"
 
 # ── Scenario 1: VERIFIED — Valid offline bundle ───────────────────────────
+# Uses the pinned policy (demo signer fingerprint in allow_signers). With
+# ClamAV installed the scenario must reach a full VERIFIED (exit 0); without
+# a scanner the air-gapped policy fails closed on the missing scanner alone
+# (exit 20) — the signature and checksum checks still pass.
 
 separator "Offline Scenario 1: VERIFIED — Valid offline bundle"
 
 "${VERISCAN}" verify \
-    --policy "${POLICIES_DIR}/airgapped.yaml" \
+    --policy "${PINNED_POLICY}" \
     --offline "${BUNDLE_DIR}" \
     --report-json "${OUT_DIR}/offline_scenario1_verified.json" \
     --report-md  "${OUT_DIR}/offline_scenario1_verified.md" \
     /dev/null && EXITCODE=0 || EXITCODE=$?   # Source arg unused in offline mode
 echo "Exit code: ${EXITCODE}"
-( [ "${EXITCODE}" -eq 0 ] || [ "${EXITCODE}" -eq 20 ] ) \
-    && echo "✅ PASS: Bundle integrity verified (20 = fail-closed policy: empty allow_signers pins no signers, and no malware scanner; pin the demo key fingerprint and install ClamAV for exit 0)" \
-    || echo "❌ FAIL: Expected exit 0 or 20, got ${EXITCODE}"
+if command -v clamscan &>/dev/null; then
+    [ "${EXITCODE}" -eq 0 ] \
+        && echo "✅ PASS: Full VERIFIED — pinned signer accepted, checksums match, malware scan clean" \
+        || echo "❌ FAIL: Expected exit 0 (ClamAV is installed), got ${EXITCODE}"
+else
+    if [ "${EXITCODE}" -eq 20 ] \
+        && grep -q "scanner unavailable" "${OUT_DIR}/offline_scenario1_verified.json"; then
+        echo "✅ PASS: Signer accepted and checksums match; fail-closed only on the missing malware scanner (install ClamAV for exit 0)"
+    else
+        echo "❌ FAIL: Expected exit 20 due to missing scanner, got ${EXITCODE}"
+    fi
+fi
 
 # ── Scenario 2: FAILED — Tampered artifact in bundle ─────────────────────
 
