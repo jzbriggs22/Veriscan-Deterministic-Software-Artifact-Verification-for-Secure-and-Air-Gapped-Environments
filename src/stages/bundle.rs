@@ -437,6 +437,7 @@ fn sign_artifact_with_sequoia(
     {
         let message = Message::new(&mut sig_output);
         let mut signer = Signer::new(message, signing_keypair)
+            .map_err(|e| VeriError::Internal(format!("Failed to create signer: {}", e)))?
             .detached()
             .build()
             .map_err(|e| VeriError::Internal(format!("Failed to create signer: {}", e)))?;
@@ -486,7 +487,7 @@ fn verify_sig_with_certs(
                 .iter()
                 .filter(|c| {
                     ids.iter()
-                        .any(|id| c.keys().any(|k| k.key_handle().aliases(id)))
+                        .any(|id| c.keys().any(|k| k.key().key_handle().aliases(id)))
                 })
                 .cloned()
                 .collect())

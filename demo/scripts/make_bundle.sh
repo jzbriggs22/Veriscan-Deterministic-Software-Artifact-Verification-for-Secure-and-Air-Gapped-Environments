@@ -85,6 +85,24 @@ KEY_FP=$(gpg --homedir "${GPG_TMPDIR2}" \
     | grep "^fpr" | head -1 | cut -d: -f10)
 echo "[make_bundle] Key fingerprint: ${KEY_FP}"
 
+# ── Pinned air-gapped policy ──────────────────────────────────────────────
+# Derive a demo policy from policies/airgapped.yaml with the demo signer's
+# fingerprint in allow_signers. The stock policy ships with an empty
+# allowlist (fail-closed), so scenario 1 of the offline demo can only reach
+# a full VERIFIED verdict with this pinned variant (plus ClamAV installed).
+
+POLICIES_DIR="/policies"
+[ -d "${POLICIES_DIR}" ] || POLICIES_DIR="${DEMO_DIR}/../policies"
+PINNED_POLICY="${OUT_DIR}/airgapped_pinned.yaml"
+
+sed "s|^allow_signers: \[\]$|allow_signers:\n  - \"${KEY_FP}\"|" \
+    "${POLICIES_DIR}/airgapped.yaml" > "${PINNED_POLICY}"
+grep -q "${KEY_FP}" "${PINNED_POLICY}" || {
+    echo "[make_bundle] ERROR: failed to pin fingerprint into ${PINNED_POLICY}" >&2
+    exit 1
+}
+echo "[make_bundle] Pinned air-gapped policy written: ${PINNED_POLICY}"
+
 [ "${KEYS_ONLY}" = "--keys-only" ] && exit 0
 
 # ── Fixture: good artifact ────────────────────────────────────────────────
